@@ -12,6 +12,7 @@ function makeSql(connectionString: string) {
   return postgres(connectionString, {
     max: 5,
     idle_timeout: 20,
+    onnotice: () => {}, // abaikan NOTICE "already exists" dari migrasi otomatis
     prepare: false, // kompatibel dengan connection pooler (Neon/Supabase/pgbouncer)
     ssl: local ? false : "require",
     types: {

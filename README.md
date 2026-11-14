@@ -40,7 +40,7 @@ Tanpa `APP_PASSWORD` di mode development, login dimatikan. Di production login *
 3. Aset dianggap *Diclaim* bila punya tanggal jatuh tempo atau data W–AD. Aset yang hanya punya Remark/MVD dari Excel berstatus *Catatan*
    (terlihat di Claim Customer → filter “Hanya catatan”). Membatalkan claim tidak menghapus aset.
 
-Update database lama: jalankan halaman **/setup** → *Buat tabel* (atau `npm run db:migrate`). Kolom Remark/MVD/Expense/FA di tabel `assets`
+Update database lama: **otomatis** — setiap deploy/start, aplikasi menjalankan migrasi skema sendiri (`instrumentation.ts`), tidak perlu membuka /setup. Kolom Remark/MVD/Expense/FA di tabel `assets`
 otomatis dipindahkan ke tabel `asset_claims` lalu dihapus dari `assets`.
 
 Update data bulanan: **Daftar Aset → Impor Excel → Ganti semua data**.
