@@ -17,7 +17,7 @@ export default function ClaimsClient({ rows, exportQs }: { rows: ClaimRow[]; exp
     <>
       <div className="flex items-center gap-2">
         <a className="btn" href={`/api/claims/export?${exportQs}`}>Ekspor Excel</a>
-        <span className="text-sm text-slate-500">Claim baru dibuat dari menu <b>Daftar Aset</b> (tombol “Claim” di baris aset).</span>
+        <span className="text-sm text-slate-500">Klik baris untuk melihat atau mengubah claim. Claim baru dibuat dari menu <b>Daftar Aset</b> (tombol “Claim” di baris aset).</span>
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[1100px] text-[13px]">
@@ -26,15 +26,16 @@ export default function ClaimsClient({ rows, exportQs }: { rows: ClaimRow[]; exp
               <th className="th">Jatuh tempo</th><th className="th">Claim ke</th><th className="th">Aset</th>
               <th className="th text-right">Inventory Asset</th><th className="th">Trans / COA</th>
               <th className="th text-right">Sales Tooling</th><th className="th text-right">Expense</th><th className="th text-right">FA Amount</th>
-              <th className="th">Remark / MVD</th><th className="th" />
+              <th className="th">Remark / MVD</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && <tr><td colSpan={10} className="td text-center text-slate-500 py-10">Belum ada claim yang cocok.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={9} className="td text-center text-slate-500 py-10">Belum ada claim yang cocok.</td></tr>}
             {rows.map((r) => {
               const overdue = r.due_date && r.due_date < today;
               return (
-                <tr key={r.id} className="hover:bg-slate-50/70 align-top">
+                <tr key={r.id} tabIndex={0} role="button" aria-label={`Buka claim ${r.item_name ?? ""}`} className="hover:bg-slate-50/70 align-top cursor-pointer"
+                  onClick={() => open(r)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }}>
                   <td className="td whitespace-nowrap">
                     {r.due_date ? <span className={`badge ${overdue ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-700"}`}>{fmtDate(r.due_date)}</span> : <span className="badge bg-amber-50 text-amber-800">belum ada</span>}
                   </td>
@@ -46,7 +47,6 @@ export default function ClaimsClient({ rows, exportQs }: { rows: ClaimRow[]; exp
                   <td className="td num amt">{r.expense_amount ? fmt(r.expense_amount) : "-"}</td>
                   <td className="td num amt">{r.fa_amount ? fmt(r.fa_amount) : "-"}{r.fa_date && <div className="text-xs text-slate-400">{fmtDate(r.fa_date)}</div>}</td>
                   <td className="td min-w-[220px] text-slate-600"><div>{r.remark}</div><div className="text-xs text-slate-400">{[r.mvd_status, r.mvd_note].filter(Boolean).join(" · ")}</div></td>
-                  <td className="td"><button className="link" onClick={() => open(r)}>Ubah</button></td>
                 </tr>
               );
             })}

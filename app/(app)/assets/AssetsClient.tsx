@@ -5,6 +5,8 @@ import Modal from "../../../components/Modal";
 import { DUE_SOON_DAYS, daysUntil, fmt, fmtDate, todayJakarta } from "../../../lib/format";
 import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
 import Seal from "../../../components/Seal";
+import ConfirmDialog, { type ConfirmProps } from "../../../components/ConfirmDialog";
+import { diffForm, listForm, type FieldDef } from "../../../lib/diff";
 import type { AssetRow, Claim, GlAccount } from "../../../lib/types";
 
 type Form = Record<string, string>;
@@ -19,6 +21,17 @@ function toForm(a: AssetRow): Form {
   return f;
 }
 
+const assetDefs = (accName: Record<string, string>): FieldDef[] => [
+  { key: "gl_account", label: "Akun GL", show: (v) => (accName[v] ? `${v} · ${accName[v]}` : v) },
+  { key: "project", label: "Project / Model" }, { key: "div_plant", label: "Div#Plant" },
+  { key: "vendor", label: "Vendor" }, { key: "tgl", label: "Tanggal", kind: "date" },
+  { key: "po_no", label: "PO" }, { key: "ringgisho_no", label: "No. Ringgisho" }, { key: "trans_no", label: "Trans" },
+  { key: "product_code", label: "Product Code" }, { key: "part_number", label: "Part Number" }, { key: "item_name", label: "Nama Barang" },
+  { key: "qty", label: "Qty", kind: "num" }, { key: "ringgisho_lc", label: "Ringgisho PUR (LC)", kind: "num" },
+  { key: "kesaisho_sales", label: "Kesaisho - Sales", kind: "num" }, { key: "amount", label: "Inventory Asset (Purchase)", kind: "num" },
+  { key: "claim_to", label: "Customer MVD" }, { key: "due_date", label: "Tanggal jatuh tempo", kind: "date" },
+];
+
 export default function AssetsClient({ rows, accounts, exportQs, totals }: { rows: AssetRow[]; accounts: GlAccount[]; exportQs: string; totals: { count: number; qty: number; amount: number } }) {
   const router = useRouter();
   const [sel, setSel] = useState<Set<number>>(new Set());
@@ -28,8 +41,8 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
   const [bulkGl, setBulkGl] = useState("");
   const [bulkDue, setBulkDue] = useState("");
   const today = todayJakarta();
-  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [confirmBulk, setConfirmBulk] = useState<ConfirmProps | null>(null);
   const [compact, setCompact] = useState(false);
   useEffect(() => { try { setCompact(localStorage.getItem("density") === "compact"); } catch { /* abaikan */ } }, []);
   const toggleDensity = () => setCompact((c) => { const n = !c; try { localStorage.setItem("density", n ? "compact" : "comfy"); } catch { /* abaikan */ } return n; });
@@ -49,14 +62,21 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
     setClaim({ assetId: r.id, title: [r.vendor, r.item_name].filter(Boolean).join(" · "), amount: r.amount, claimTo: r.claim_to, dueDate: r.due_date, claim: existing });
   }
 
-  async function bulk(body: object, okMsg: (n: number) => string) {
-    setBusy(true); setMsg("");
+  /** Jalankan aksi massal; kembalikan teks error bila gagal (dipakai dialog konfirmasi). */
+  async function bulk(body: object, okMsg: (n: number) => string): Promise<string | void> {
+    setMsg("");
     const res = await fetch("/api/assets/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [...sel], ...body }) });
-    const j = await res.json();
-    setBusy(false);
-    if (!res.ok) { setMsg(j.error ?? "Gagal"); return; }
-    setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); router.refresh();
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return j.error ?? "Gagal";
+    setConfirmBulk(null); setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); router.refresh();
   }
+  const itemLabel = (r: AssetRow) => [r.vendor, r.item_name].filter(Boolean).join(" · ") || `Aset #${r.id}`;
+  const askBulk = (kind: "update" | "delete", title: string, summary: string, detail: (r: AssetRow) => string, body: object, okMsg: (n: number) => string, note?: string) =>
+    setConfirmBulk({
+      kind, title, summary, note,
+      items: selRows.map((r) => ({ primary: itemLabel(r), secondary: [r.po_no, r.part_number].filter(Boolean).join(" · "), detail: detail(r) })),
+      onConfirm: () => bulk(body, okMsg), onCancel: () => setConfirmBulk(null),
+    });
 
   return (
     <>
@@ -78,13 +98,16 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
             <option value="">Pindahkan ke akun GL…</option>
             {accounts.map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
           </select>
-          <button className="btn-primary" disabled={!bulkGl || busy}
-            onClick={() => confirm(`Pindahkan ${sel.size} aset ke akun ${bulkGl}?`) && bulk({ gl_account: bulkGl }, (n) => `${n} aset dipindahkan ke ${bulkGl}`)}>Terapkan</button>
+          <button className="btn-primary" disabled={!bulkGl}
+            onClick={() => askBulk("update", `Pindahkan ${sel.size} aset ke akun GL baru`, `Akun GL tujuan: ${bulkGl}${accName[bulkGl] ? " · " + accName[bulkGl] : ""}`,
+              (r) => `${r.gl_account ?? "kosong"} → ${bulkGl}`, { gl_account: bulkGl }, (n) => `${n} aset dipindahkan ke ${bulkGl}`)}>Terapkan</button>
           <input type="date" value={bulkDue} onChange={(e) => setBulkDue(e.target.value)} className="input !w-auto" aria-label="Tanggal jatuh tempo" />
-          <button className="btn-primary" disabled={!bulkDue || busy}
-            onClick={() => bulk({ action: "due", due_date: bulkDue }, (n) => `Jatuh tempo ${n} aset diatur ke ${fmtDate(bulkDue)}`)}>Atur jatuh tempo</button>
-          <button className="btn-danger" disabled={busy}
-            onClick={() => confirm(`Hapus ${sel.size} aset? Tindakan ini tidak bisa dibatalkan.`) && bulk({ action: "delete" }, (n) => `${n} aset dihapus`)}>Hapus</button>
+          <button className="btn-primary" disabled={!bulkDue}
+            onClick={() => askBulk("update", `Atur jatuh tempo ${sel.size} aset`, `Tanggal jatuh tempo baru: ${fmtDate(bulkDue)}`,
+              (r) => `${fmtDate(r.due_date)} → ${fmtDate(bulkDue)}`, { action: "due", due_date: bulkDue }, (n) => `Jatuh tempo ${n} aset diatur ke ${fmtDate(bulkDue)}`)}>Atur jatuh tempo</button>
+          <button className="btn-danger"
+            onClick={() => askBulk("delete", `Hapus ${sel.size} aset`, `Total nilai Rp ${fmt(selRows.reduce((t, r) => t + r.amount, 0))} akan dihapus dari daftar aset.`,
+              (r) => `Rp ${fmt(r.amount)}`, { action: "delete" }, (n) => `${n} aset dihapus`, "Tindakan ini tidak bisa dibatalkan.")}>Hapus</button>
           <button className="btn" onClick={() => setSel(new Set())}>Batal pilih</button>
         </div>
       )}
@@ -96,18 +119,21 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
               <th className="th w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Pilih semua" /></th>
               <th className="th">GL</th><th className="th">Vendor / Project</th><th className="th">PO / Tgl</th>
               <th className="th">Kode / Part</th><th className="th">Nama Barang</th>
-              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Jatuh tempo</th><th className="th">Claim</th><th className="th" />
+              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Jatuh tempo</th><th className="th">Claim</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && <tr><td colSpan={11} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={10} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
             {rows.map((r) => {
               const days = r.due_date ? daysUntil(r.due_date, today) : null;
               const isDue = !r.claimed && days !== null && days <= 0;
               const isSoon = !r.claimed && days !== null && days > 0 && days <= DUE_SOON_DAYS;
               return (
-              <tr key={r.id} className={sel.has(r.id) ? "bg-brand-50/50" : isDue ? "bg-red-50/60 hover:bg-red-50" : "hover:bg-slate-50/70"}>
-                <td className="td"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Pilih aset ${r.id}`} /></td>
+              <tr key={r.id} tabIndex={0} role="button" aria-label={`Buka data aset ${itemLabel(r)}`}
+                className={`cursor-pointer ${sel.has(r.id) ? "bg-brand-50/50" : isDue ? "bg-red-50/60 hover:bg-red-50" : "hover:bg-slate-50/70"}`}
+                onClick={() => setEdit({ id: r.id, form: toForm(r) })}
+                onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setEdit({ id: r.id, form: toForm(r) }); } }}>
+                <td className="td" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Pilih aset ${r.id}`} /></td>
                 <td className="td whitespace-nowrap" title={r.gl_account ? accName[r.gl_account] : ""}>
                   {r.gl_account ?? <span className="badge bg-red-50 text-red-700">kosong</span>}</td>
                 <td className="td min-w-[170px]"><div>{r.vendor}</div><div className="text-xs text-slate-500">{r.project}</div></td>
@@ -125,7 +151,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                     </>
                   )}
                 </td>
-                <td className="td whitespace-nowrap">
+                <td className="td whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   {r.claimed
                     ? <button className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:underline underline-offset-4" style={{ color: "var(--stamp)" }} onClick={() => openClaim(r)} title="Lihat / ubah claim"><Seal size={20} />Diclaim</button>
                     : isDue
@@ -134,7 +160,6 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                       ? <button className="badge bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200" onClick={() => openClaim(r)} title="Ada catatan Remark/MVD, belum diclaim">Catatan</button>
                       : <button className="link" onClick={() => openClaim(r)}>Claim</button>}
                 </td>
-                <td className="td"><button className="link" onClick={() => setEdit({ id: r.id, form: toForm(r) })}>Ubah</button></td>
               </tr>
               );
             })}
@@ -146,51 +171,70 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                   <td className="td" colSpan={6}>Dipilih ({fmt(sel.size)} baris)</td>
                   <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.qty), 0))}</td>
                   <td className="td num amt">{fmt(selRows.reduce((t, r) => t + Number(r.amount), 0))}</td>
-                  <td className="td" colSpan={3} />
+                  <td className="td" colSpan={2} />
                 </tr>
               )}
               <tr>
                 <td className="td" colSpan={6}>Subtotal halaman ini ({fmt(rows.length)} baris)</td>
                 <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.qty), 0))}</td>
                 <td className="td num amt">{fmt(rows.reduce((t, r) => t + Number(r.amount), 0))}</td>
-                <td className="td" colSpan={3} />
+                <td className="td" colSpan={2} />
               </tr>
               <tr>
                 <td className="td" colSpan={6}>Total semua hasil filter ({fmt(totals.count)} item)</td>
                 <td className="td num">{fmt(totals.qty)}</td>
                 <td className="td num amt">{fmt(totals.amount)}</td>
-                <td className="td" colSpan={3} />
+                <td className="td" colSpan={2} />
               </tr>
             </tfoot>
           )}
         </table>
       </div>
 
-      {edit && <AssetModal edit={edit} accounts={accounts} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); router.refresh(); }} />}
+      {confirmBulk && <ConfirmDialog {...confirmBulk} />}
+      {edit && <AssetModal edit={edit} accounts={accounts} accName={accName} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); router.refresh(); }} />}
       {claim && <ClaimModal target={claim} onClose={() => setClaim(null)} onSaved={() => { setClaim(null); router.refresh(); }} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onDone={() => { setShowImport(false); router.refresh(); }} />}
     </>
   );
 }
 
-function AssetModal({ edit, accounts, onClose, onSaved }: { edit: { id: number | null; form: Form }; accounts: GlAccount[]; onClose: () => void; onSaved: () => void }) {
+function AssetModal({ edit, accounts, accName, onClose, onSaved }: { edit: { id: number | null; form: Form }; accounts: GlAccount[]; accName: Record<string, string>; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(edit.form);
   const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [confirmAsk, setConfirmAsk] = useState<ConfirmProps | null>(null);
+  const defs = useMemo(() => assetDefs(accName), [accName]);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const title = [edit.form.vendor, edit.form.item_name].filter(Boolean).join(" · ");
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setErr("");
-    const res = await fetch(edit.id ? `/api/assets/${edit.id}` : "/api/assets", { method: edit.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
-    if (res.ok) return onSaved();
-    setErr((await res.json().catch(() => ({}))).error ?? "Gagal menyimpan"); setBusy(false);
+  /** Form disubmit → tampilkan konfirmasi berisi rincian perubahan, baru simpan. */
+  function save(e: React.FormEvent) {
+    e.preventDefault(); setErr("");
+    const run = async (): Promise<string | void> => {
+      const res = await fetch(edit.id ? `/api/assets/${edit.id}` : "/api/assets", { method: edit.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
+      if (res.ok) return onSaved();
+      return (await res.json().catch(() => ({}))).error ?? "Gagal menyimpan";
+    };
+    if (edit.id) {
+      const changes = diffForm(defs, edit.form, f);
+      if (changes.length === 0) { setErr("Belum ada data yang diubah."); return; }
+      setConfirmAsk({ kind: "update", title: "Simpan perubahan aset?", summary: `${changes.length} data akan diubah${title ? ` pada ${title}` : ""}.`, changes, onConfirm: run, onCancel: () => setConfirmAsk(null) });
+    } else {
+      setConfirmAsk({ kind: "create", title: "Tambah aset baru?", summary: "Aset baru akan dicatat dengan data berikut.", changes: listForm(defs, f, "after"), onConfirm: run, onCancel: () => setConfirmAsk(null) });
+    }
   }
-  async function del() {
-    if (!edit.id || !confirm("Hapus aset ini?")) return;
-    setBusy(true);
-    const res = await fetch(`/api/assets/${edit.id}`, { method: "DELETE" });
-    if (res.ok) return onSaved();
-    setErr("Gagal menghapus"); setBusy(false);
+  function del() {
+    if (!edit.id) return;
+    setConfirmAsk({
+      kind: "delete", title: "Hapus aset ini?", summary: title || `Aset #${edit.id}`, changes: listForm(defs, edit.form, "before"),
+      note: "Tindakan ini tidak bisa dibatalkan.",
+      onConfirm: async () => {
+        const res = await fetch(`/api/assets/${edit.id}`, { method: "DELETE" });
+        if (res.ok) return onSaved();
+        return "Gagal menghapus";
+      },
+      onCancel: () => setConfirmAsk(null),
+    });
   }
   const T = (k: string, label: string, type = "text", cls = "") => (
     <label className={cls}><span className="label">{label}</span><input type={type} value={f[k]} onChange={set(k)} className="input mt-1" step={type === "number" ? "any" : undefined} /></label>
@@ -224,10 +268,11 @@ function AssetModal({ edit, accounts, onClose, onSaved }: { edit: { id: number |
         </div>
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
         <div className="flex justify-between pt-1">
-          <div>{edit.id && <button type="button" className="btn-danger" onClick={del} disabled={busy}>Hapus</button>}</div>
-          <div className="flex gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button><button className="btn-primary" disabled={busy}>{busy ? "Menyimpan…" : "Simpan"}</button></div>
+          <div>{edit.id && <button type="button" className="btn-danger" onClick={del}>Hapus</button>}</div>
+          <div className="flex gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button><button className="btn-primary">Simpan</button></div>
         </div>
       </form>
+      {confirmAsk && <ConfirmDialog {...confirmAsk} />}
     </Modal>
   );
 }
@@ -241,8 +286,29 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const [preview, setPreview] = useState<Preview | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmAsk, setConfirmAsk] = useState<ConfirmProps | null>(null);
 
-  async function send(dry: boolean, f = file, m = mode) {
+  function askImport() {
+    if (!preview) return;
+    setConfirmAsk({
+      kind: mode === "replace" ? "delete" : "create",
+      title: mode === "replace" ? "Ganti semua data aset dengan isi file?" : "Tambahkan data dari file ke daftar aset?",
+      summary: file?.name,
+      changes: [
+        { label: "Mode", after: mode === "replace" ? "Ganti semua data" : "Tambahkan ke data yang ada" },
+        { label: "Sheet", after: preview.sheet },
+        { label: "Baris aset diimpor", after: fmt(preview.rows) },
+        { label: "Total Inventory Asset", after: `Rp ${fmt(preview.total)}` },
+        { label: "Aset dengan data claim", after: fmt(preview.claims) },
+      ],
+      note: mode === "replace" ? "Semua aset (dan claim) yang ada sekarang akan dihapus lalu diganti. Tindakan ini tidak bisa dibatalkan." : "Baris dari file ditambahkan ke data yang ada dan bisa menimbulkan duplikat.",
+      confirmLabel: mode === "replace" ? "Ya, ganti semua" : "Ya, impor",
+      onConfirm: async () => { const e = await send(false); if (e) return e; },
+      onCancel: () => setConfirmAsk(null),
+    });
+  }
+
+  async function send(dry: boolean, f = file, m = mode): Promise<string | void> {
     if (!f) return;
     setBusy(true); setErr("");
     const fd = new FormData();
@@ -250,7 +316,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     const res = await fetch("/api/assets/import", { method: "POST", body: fd });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) { setErr(j.error ?? "Gagal"); setPreview(null); return; }
+    if (!res.ok) { const m2 = j.error ?? "Gagal"; if (dry) { setErr(m2); setPreview(null); } return m2; }
     if (dry) setPreview(j); else onDone();
   }
 
@@ -277,10 +343,11 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
         <div className="flex justify-end gap-2">
           <button className="btn" onClick={onClose}>Batal</button>
           <button className="btn-primary" disabled={!preview || busy}
-            onClick={() => (mode === "append" || confirm("Semua aset yang ada sekarang akan diganti. Lanjutkan?")) && send(false)}>
+            onClick={askImport}>
             {busy ? "Memproses…" : "Impor"}</button>
         </div>
       </div>
+      {confirmAsk && <ConfirmDialog {...confirmAsk} />}
     </Modal>
   );
 }

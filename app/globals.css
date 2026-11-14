@@ -2,7 +2,7 @@
 
 /*
   Desain "Buku Besar bercap":
-  - kertas buku besar (garis tipis), tinta indigo (aizome), cap tanggal bergaya hanko
+  - tinta indigo (aizome), cap tanggal bergaya hanko
   - merah hanya untuk peringatan jatuh tempo; hijau jade untuk "sesuai"; cap memakai tinta indigo
   Palet slate/red/amber/emerald/sky/brand di-remap ke variabel agar seluruh halaman lama
   otomatis mengikuti tema terang/gelap tanpa mengubah kelas Tailwind-nya.
@@ -137,12 +137,8 @@ html[data-privacy="on"] .amt:hover { filter: none; }
   .link { color: var(--b600); font-size: 0.875rem; cursor: pointer; }
   .link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-  /* Panel gelap berkertas buku besar */
-  .ledger {
-    background-color: var(--ink);
-    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(255, 255, 255, 0.045) 35px, rgba(255, 255, 255, 0.045) 36px);
-    color: #e9ecf5;
-  }
+  /* Panel gelap polos (tanpa garis latar) */
+  .ledger { background-color: var(--ink); color: #e9ecf5; }
   .hero-num { font-weight: 300; letter-spacing: -0.035em; line-height: 1; font-size: clamp(2.4rem, 7.2vw, 5.6rem); font-variant-numeric: tabular-nums; }
   .title { font-size: 1.65rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
   .subtitle { color: var(--s500); font-size: 0.875rem; max-width: 46rem; }

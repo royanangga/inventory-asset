@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import MoneyInput from "../../../../components/MoneyInput";
 import Modal from "../../../../components/Modal";
+import ConfirmDialog, { type Change, type ConfirmProps } from "../../../../components/ConfirmDialog";
 import Seal from "../../../../components/Seal";
 import Ring from "../../../../components/Ring";
 import Stat from "../../../../components/Stat";
@@ -39,6 +40,8 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [addAcc, setAddAcc] = useState(false);
+  const [ask, setAsk] = useState<ConfirmProps | null>(null);
+  const origAdjs = useRef<AdjRow[]>(adjs);
 
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
@@ -62,32 +65,109 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
     };
   }
 
+  /** Simpan ke server (tanpa konfirmasi; konfirmasi dipasang oleh pemanggil). */
   async function save(extra: object = {}, okText = "Tersimpan") {
     setBusy(true); setMsg(null);
     const res = await fetch(`/api/reconciliations/${recon.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload(extra)) });
     const j = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) { setMsg({ ok: false, text: j.error ?? "Gagal menyimpan" }); return false; }
-    setDirty(false); setMsg({ ok: true, text: okText }); return true;
+    if (!res.ok) { setMsg({ ok: false, text: j.error ?? "Gagal menyimpan" }); return j.error ?? "Gagal menyimpan"; }
+    setDirty(false); setMsg({ ok: true, text: okText }); return "";
   }
 
-  async function finalize() {
+  const rp = (n: number | null | undefined) => (n === null || n === undefined ? "" : `Rp ${fmt(n)}`);
+  const adjText = (a: Adj) => `${a.gl_account} · ${a.description.trim() || "(tanpa keterangan)"} · ${rp(a.amount)}`;
+
+  /** Rincian semua perubahan yang belum tersimpan (judul, tanggal, catatan, saldo TB, penyesuaian). */
+  function unsavedChanges(): Change[] {
+    const out: Change[] = [];
+    if (title !== recon.title) out.push({ label: "Judul", before: recon.title, after: title });
+    if (asOf !== recon.as_of) out.push({ label: "Posisi per", before: fmtDate(recon.as_of), after: fmtDate(asOf) });
+    if (notes !== (recon.notes ?? "")) out.push({ label: "Catatan", before: recon.notes ?? "", after: notes });
+    for (const l of initial.lines) {
+      const now = tb[l.gl_account] ?? null;
+      if (now !== l.tb_balance) out.push({ label: `Saldo TB ${l.gl_account}`, before: rp(l.tb_balance), after: rp(now) });
+    }
+    const blank = (a: AdjRow) => !a.description.trim() && !a.amount;
+    const orig = new Map(origAdjs.current.map((a) => [a.key, a]));
+    for (const a of adjs) {
+      if (blank(a)) continue;
+      const o = orig.get(a.key);
+      if (!o || blank(o)) out.push({ label: "Penyesuaian baru", after: adjText(a) });
+      else if (o.description !== a.description || o.amount !== a.amount || o.gl_account !== a.gl_account) out.push({ label: "Penyesuaian diubah", before: adjText(o), after: adjText(a) });
+    }
+    const cur = new Set(adjs.map((a) => a.key));
+    for (const o of origAdjs.current) if (!blank(o) && !cur.has(o.key)) out.push({ label: "Penyesuaian dihapus", before: adjText(o) });
+    return out;
+  }
+
+  function askSave() {
+    const changes = unsavedChanges();
+    if (changes.length === 0) { setMsg({ ok: true, text: "Tidak ada perubahan yang perlu disimpan." }); return; }
+    setAsk({
+      kind: "update", title: "Simpan perubahan rekonsiliasi?", summary: `${changes.length} perubahan akan disimpan pada “${recon.title}”.`, changes,
+      onConfirm: async () => {
+        const e = await save();
+        if (e) return e;
+        origAdjs.current = adjs; setAsk(null); router.refresh();
+      },
+      onCancel: () => setAsk(null),
+    });
+  }
+
+  function finalize() {
     const empty = results.filter((r) => r.status === "empty").length;
     const diff = results.filter((r) => r.status === "diff").length;
     const warn = [empty && `${empty} akun belum diisi`, diff && `${diff} akun masih ada selisih yang belum dijelaskan`].filter(Boolean).join(" dan ");
-    if (!confirm(`${warn ? warn[0].toUpperCase() + warn.slice(1) + ". " : ""}Finalkan rekonsiliasi ini? Saldo sistem akan dikunci sebagai snapshot dan data tidak bisa diubah sampai dibuka kembali.`)) return;
-    if (await save({ status: "final" }, "Rekonsiliasi difinalkan")) window.location.reload();
+    setAsk({
+      kind: "action", title: "Finalkan rekonsiliasi ini?", summary: `“${recon.title}” · posisi per ${fmtDate(asOf)}`,
+      changes: [
+        { label: "Status", before: "Draft", after: "Final" },
+        { label: "Total saldo TB", after: tot.filled ? rp(tot.tb) : "-" },
+        { label: "Total saldo sistem", after: rp(tot.sysFilled) },
+        { label: "Selisih (TB − Sistem)", after: tot.filled ? rp(tot.diff) : "-" },
+        { label: "Akun sesuai", after: `${okCount} dari ${tot.total}` },
+        ...unsavedChanges().map((c) => ({ ...c, label: `${c.label} (belum tersimpan)` })),
+      ],
+      note: `${warn ? warn[0].toUpperCase() + warn.slice(1) + ". " : ""}Saldo sistem akan dikunci sebagai snapshot dan data tidak bisa diubah sampai dibuka kembali.`,
+      confirmLabel: "Ya, finalkan",
+      onConfirm: async () => {
+        const e = await save({ status: "final" }, "Rekonsiliasi difinalkan");
+        if (e) return e;
+        window.location.reload();
+      },
+      onCancel: () => setAsk(null),
+    });
   }
-  async function reopen() {
-    if (!confirm("Buka kembali rekonsiliasi ini sebagai draft?")) return;
-    setBusy(true);
-    const res = await fetch(`/api/reconciliations/${recon.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "draft" }) });
-    if (res.ok) window.location.reload(); else { setBusy(false); setMsg({ ok: false, text: "Gagal membuka kembali" }); }
+  function reopen() {
+    setAsk({
+      kind: "action", title: "Buka kembali rekonsiliasi ini?", summary: `“${recon.title}” akan bisa diedit lagi.`,
+      changes: [{ label: "Status", before: "Final", after: "Draft" }, { label: "Difinalkan pada", before: fmtDate(recon.finalized_at), after: "" }],
+      confirmLabel: "Ya, buka kembali",
+      onConfirm: async () => {
+        const res = await fetch(`/api/reconciliations/${recon.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "draft" }) });
+        if (res.ok) { window.location.reload(); return; }
+        return "Gagal membuka kembali";
+      },
+      onCancel: () => setAsk(null),
+    });
   }
-  async function remove() {
-    if (!confirm("Hapus rekonsiliasi ini beserta penyesuaiannya?")) return;
-    const res = await fetch(`/api/reconciliations/${recon.id}`, { method: "DELETE" });
-    if (res.ok) { setDirty(false); router.push("/reconciliation"); }
+  function remove() {
+    const n = adjs.filter((a) => a.description.trim() || a.amount).length;
+    setAsk({
+      kind: "delete", title: "Hapus rekonsiliasi ini?", summary: `“${recon.title}” beserta seluruh penyesuaiannya.`,
+      changes: [
+        { label: "Judul", before: recon.title }, { label: "Posisi per", before: fmtDate(recon.as_of) }, { label: "Status", before: "Draft" },
+        { label: "Total saldo TB", before: tot.filled ? rp(tot.tb) : "-" }, { label: "Jumlah penyesuaian", before: String(n) },
+      ],
+      note: "Tindakan ini tidak bisa dibatalkan.",
+      onConfirm: async () => {
+        const res = await fetch(`/api/reconciliations/${recon.id}`, { method: "DELETE" });
+        if (res.ok) { setDirty(false); setAsk(null); router.push("/reconciliation"); return; }
+        return "Gagal menghapus";
+      },
+      onCancel: () => setAsk(null),
+    });
   }
 
   const bigDiff = tot.filled > 0 && Math.abs(tot.diff) > 1;
@@ -118,7 +198,7 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
           ) : (
             <>
               <button className="btn-danger" onClick={remove}>Hapus</button>
-              <button className="btn" onClick={() => save()} disabled={busy || !dirty}>{busy ? "Menyimpan…" : "Simpan"}</button>
+              <button className="btn" onClick={askSave} disabled={busy || !dirty}>{busy ? "Menyimpan…" : "Simpan"}</button>
               <button className="btn-primary" onClick={finalize} disabled={busy}>Finalkan</button>
             </>
           )}
@@ -231,7 +311,8 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
           placeholder="Mis. selisih Plant1/Plant2 karena reklasifikasi, menunggu jurnal koreksi…" />
       </div>
 
-      {addAcc && <AddAccount onClose={() => setAddAcc(false)} onDone={async () => {
+      {ask && <ConfirmDialog {...ask} />}
+      {addAcc && <AddAccount dirty={dirty} onClose={() => setAddAcc(false)} onDone={async () => {
         if (dirty) await save();
         window.location.reload();
       }} />}
@@ -341,22 +422,31 @@ function Detail({ r, assets, adjs, setAdjs, locked }: {
   );
 }
 
-function AddAccount({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [code, setCode] = useState(""); const [name, setName] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setErr("");
-    const res = await fetch("/api/gl-accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name }) });
-    if (res.ok) return onDone();
-    setErr((await res.json().catch(() => ({}))).error ?? "Gagal"); setBusy(false);
+function AddAccount({ dirty, onClose, onDone }: { dirty: boolean; onClose: () => void; onDone: () => void }) {
+  const [code, setCode] = useState(""); const [name, setName] = useState("");
+  const [ask, setAsk] = useState<ConfirmProps | null>(null);
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setAsk({
+      kind: "create", title: "Tambah akun GL baru?", summary: "Akun akan ditambahkan ke daftar akun dan ikut direkonsiliasi.",
+      changes: [{ label: "Kode akun", after: code }, { label: "Nama akun", after: name }],
+      note: dirty ? "Perubahan rekonsiliasi yang belum tersimpan akan ikut disimpan sebelum halaman dimuat ulang." : undefined,
+      onConfirm: async () => {
+        const res = await fetch("/api/gl-accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name }) });
+        if (res.ok) return onDone();
+        return (await res.json().catch(() => ({}))).error ?? "Gagal";
+      },
+      onCancel: () => setAsk(null),
+    });
   }
   return (
     <Modal title="Tambah akun GL" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <label className="block"><span className="label">Kode akun</span><input className="input mt-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="1135005" /></label>
         <label className="block"><span className="label">Nama akun</span><input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Inventory Asset (Plant5)" /></label>
-        {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
-        <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button><button className="btn-primary" disabled={busy || !code || !name}>Simpan</button></div>
+        <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button><button className="btn-primary" disabled={!code || !name}>Simpan</button></div>
       </form>
+      {ask && <ConfirmDialog {...ask} />}
     </Modal>
   );
 }

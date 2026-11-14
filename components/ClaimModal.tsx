@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import Modal from "./Modal";
+import ConfirmDialog, { type ConfirmProps } from "./ConfirmDialog";
+import { diffForm, listForm, type FieldDef } from "../lib/diff";
 import { fmt, fmtDate } from "../lib/format";
 import type { Claim } from "../lib/types";
 
@@ -16,6 +18,15 @@ export type ClaimTarget = {
 type Form = Record<string, string>;
 const FIELDS = ["trans_ref", "expense_coa", "sales_tooling", "expense_amount", "fa_amount", "fa_date", "remark", "mvd_status", "mvd_note", "note"] as const;
 
+const DEFS: FieldDef[] = [
+  { key: "claimed", label: "Status claim", kind: "bool", show: (v) => (v === "true" ? "Sudah di-claim" : "Baru catatan (belum di-claim)") },
+  { key: "trans_ref", label: "Trans (JV)" }, { key: "expense_coa", label: "COA Expense" },
+  { key: "sales_tooling", label: "Sales Tooling Amount", kind: "num" }, { key: "expense_amount", label: "Expense Amount", kind: "num" },
+  { key: "fa_amount", label: "FA Amount", kind: "num" }, { key: "fa_date", label: "Tanggal FA", kind: "date" },
+  { key: "mvd_status", label: "MVD" }, { key: "mvd_note", label: "MVD (keterangan / target)" },
+  { key: "remark", label: "Remark" }, { key: "note", label: "Catatan lain" },
+];
+
 function toForm(c: Claim | null): Form {
   const f: Form = {};
   for (const k of FIELDS) {
@@ -30,28 +41,48 @@ export default function ClaimModal({ target, onClose, onSaved }: { target: Claim
   const [f, setF] = useState<Form>(toForm(target.claim));
   const [claimed, setClaimed] = useState(target.claim ? target.claim.claimed : true);
   const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState<ConfirmProps | null>(null);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   const T = (k: string, label: string, type = "text", cls = "") => (
     <label className={cls}><span className="label">{label}</span>
       <input type={type} value={f[k]} onChange={set(k)} className="input mt-1" step={type === "number" ? "any" : undefined} /></label>
   );
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setErr("");
-    const res = await fetch(target.claim ? `/api/claims/${target.claim.id}` : "/api/claims", {
-      method: target.claim ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...f, claimed, asset_id: target.assetId }),
-    });
-    if (res.ok) return onSaved();
-    setErr((await res.json().catch(() => ({}))).error ?? "Gagal menyimpan"); setBusy(false);
+  const original = { ...toForm(target.claim), claimed: String(target.claim ? target.claim.claimed : true) };
+
+  /** Form disubmit → konfirmasi dengan rincian perubahan, baru simpan. */
+  function save(e: React.FormEvent) {
+    e.preventDefault(); setErr("");
+    const now = { ...f, claimed: String(claimed) };
+    const run = async (): Promise<string | void> => {
+      const res = await fetch(target.claim ? `/api/claims/${target.claim.id}` : "/api/claims", {
+        method: target.claim ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...f, claimed, asset_id: target.assetId }),
+      });
+      if (res.ok) return onSaved();
+      return (await res.json().catch(() => ({}))).error ?? "Gagal menyimpan";
+    };
+    if (target.claim) {
+      const changes = diffForm(DEFS, original, now);
+      if (changes.length === 0) { setErr("Belum ada data yang diubah."); return; }
+      setAsk({ kind: "update", title: "Simpan perubahan claim?", summary: `${changes.length} data akan diubah pada claim ${target.title}.`, changes, onConfirm: run, onCancel: () => setAsk(null) });
+    } else {
+      setAsk({ kind: "create", title: "Buat claim ke customer?", summary: `Claim baru untuk ${target.title}.`, changes: listForm(DEFS, now, "after"), onConfirm: run, onCancel: () => setAsk(null) });
+    }
   }
-  async function cancelClaim() {
-    if (!target.claim || !confirm("Batalkan claim ini? Aset tetap ada di inventory, data claim dihapus.")) return;
-    setBusy(true);
-    const res = await fetch(`/api/claims/${target.claim.id}`, { method: "DELETE" });
-    if (res.ok) return onSaved();
-    setErr("Gagal membatalkan claim"); setBusy(false);
+  function cancelClaim() {
+    if (!target.claim) return;
+    setAsk({
+      kind: "delete", title: "Batalkan claim ini?", summary: `${target.title} · Inventory Asset Rp ${fmt(target.amount)}`,
+      changes: listForm(DEFS, original, "before"), note: "Aset tetap ada di inventory, hanya data claim yang dihapus. Tindakan ini tidak bisa dibatalkan.",
+      confirmLabel: "Ya, batalkan claim",
+      onConfirm: async () => {
+        const res = await fetch(`/api/claims/${target.claim!.id}`, { method: "DELETE" });
+        if (res.ok) return onSaved();
+        return "Gagal membatalkan claim";
+      },
+      onCancel: () => setAsk(null),
+    });
   }
 
   return (
@@ -76,11 +107,12 @@ export default function ClaimModal({ target, onClose, onSaved }: { target: Claim
         </div>
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
         <div className="flex justify-between pt-1">
-          <div>{target.claim && <button type="button" className="btn-danger" onClick={cancelClaim} disabled={busy}>Batalkan claim</button>}</div>
+          <div>{target.claim && <button type="button" className="btn-danger" onClick={cancelClaim}>Batalkan claim</button>}</div>
           <div className="flex gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button>
-            <button className="btn-primary" disabled={busy}>{busy ? "Menyimpan…" : "Simpan"}</button></div>
+            <button className="btn-primary">Simpan</button></div>
         </div>
       </form>
+      {ask && <ConfirmDialog {...ask} />}
     </Modal>
   );
 }
