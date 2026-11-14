@@ -5,7 +5,10 @@ Stack: Next.js 15 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (`post
 
 ## Fitur
 - **Dashboard** – total aset, per akun GL, per Div#Plant, per project, pemeriksaan kualitas data (duplikat, nilai ≤ 0, tanpa akun GL).
-- **Daftar Aset** – cari/filter, tambah/ubah/hapus, pindahkan akun GL secara massal, **impor** & **ekspor** Excel.
+- **Daftar Aset** – detail inventory asset (**kolom B–T** di Excel; tanpa Remark/MVD/Expense/FA). Cari/filter, tambah/ubah/hapus,
+  pindahkan akun GL secara massal, **impor** & **ekspor** Excel, dan tombol **Claim** per baris.
+- **Claim Customer** – aset yang sudah di-claim ke customer: **kolom W–AD** (Trans, COA, Sales Tooling, Expense, FA Amount, Date)
+  + Remark, MVD, dan tanggal jatuh tempo. Filter jatuh tempo, ekspor Excel.
 - **Rekonsiliasi TB** – isi saldo TB per akun GL → sistem menghitung saldo daftar aset, selisih, status per akun;
   telusuri rincian aset, catat penyesuaian/penjelasan selisih, petunjuk penyebab, simpan sebagai draft,
   **finalkan** (saldo sistem dikunci sebagai snapshot), buka kembali, ekspor ke Excel.
@@ -31,6 +34,15 @@ Tanpa `APP_PASSWORD` di mode development, login dimatikan. Di production login *
 4. Buka website → login → Anda otomatis diarahkan ke halaman **Setup**: klik *Buat tabel*, lalu unggah
    `Inventory_asset_2026.xlsx` → *Impor Excel*. Selesai.
 
+## Alur pencatatan
+1. Aset yang sudah dibeli dicatat di **Daftar Aset** (detail inventory = kolom B–T). Hanya kolom *Inventory Asset* yang masuk saldo & rekonsiliasi TB.
+2. Setelah ada **tanggal jatuh tempo**, klik **Claim** pada aset → isi data claim (W–AD, Remark, MVD). Aset tampil di menu **Claim Customer**.
+3. Aset dianggap *Diclaim* bila punya tanggal jatuh tempo atau data W–AD. Aset yang hanya punya Remark/MVD dari Excel berstatus *Catatan*
+   (terlihat di Claim Customer → filter “Hanya catatan”). Membatalkan claim tidak menghapus aset.
+
+Update database lama: jalankan halaman **/setup** → *Buat tabel* (atau `npm run db:migrate`). Kolom Remark/MVD/Expense/FA di tabel `assets`
+otomatis dipindahkan ke tabel `asset_claims` lalu dihapus dari `assets`.
+
 Update data bulanan: **Daftar Aset → Impor Excel → Ganti semua data**.
 
 ## Cara kerja rekonsiliasi
@@ -41,5 +53,5 @@ Update data bulanan: **Daftar Aset → Impor Excel → Ganti semua data**.
 - Rekonsiliasi **Final** menyimpan snapshot saldo sistem, sehingga perubahan aset sesudahnya tidak mengubah hasil.
 
 ## Struktur
-`sql/schema.sql` skema · `lib/excel.ts` parser Excel · `lib/recon.ts` logika rekonsiliasi (diuji: `npx tsx scripts/test-recon.ts`)
+`sql/schema.sql` skema (tabel `assets` = detail, `asset_claims` = claim) · `lib/excel.ts` parser Excel · `lib/recon.ts` logika rekonsiliasi (diuji: `npx tsx scripts/test-recon.ts`)
 · `app/` halaman & API · `scripts/` migrasi & seed.

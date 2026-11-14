@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS gl_accounts (
   sort_order  int  NOT NULL DEFAULT 0
 );
 
+-- Detail inventory asset = kolom B-T di sheet (tanpa Remark/MVD)
 CREATE TABLE IF NOT EXISTS assets (
   id              serial PRIMARY KEY,
   gl_account      text REFERENCES gl_accounts(code) ON UPDATE CASCADE,
@@ -24,21 +25,53 @@ CREATE TABLE IF NOT EXISTS assets (
   kesaisho_sales  numeric(20,2) NOT NULL DEFAULT 0,  -- KESAISHO - SALES
   amount          numeric(20,2) NOT NULL DEFAULT 0,  -- INVENTORY ASSET (PURCHASE)
   claim_to        text,            -- CUSTOMER MVD (Claim ADM / Claim TBINA)
-  remark          text,            -- REMARK
-  mvd_status      text,            -- MVD
-  mvd_note        text,            -- MVD (kolom V)
-  trans_ref       text,            -- Trans (kolom W)
-  expense_coa     text,            -- COA expense
-  expense_amount  numeric(20,2) NOT NULL DEFAULT 0,  -- EXPENSE AMOUNT
-  fa_amount       numeric(20,2) NOT NULL DEFAULT 0,  -- FA AMOUNT
-  fa_date         text,            -- DATE (FA)
-  note            text,            -- catatan lain (kolom AF)
   source_row      int,             -- nomor baris di Excel (untuk penelusuran)
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS assets_gl_idx      ON assets(gl_account);
 CREATE INDEX IF NOT EXISTS assets_project_idx ON assets(project);
+
+-- Claim ke customer = kolom W-AD di sheet + Remark/MVD + tanggal jatuh tempo (maks. satu claim per aset)
+CREATE TABLE IF NOT EXISTS asset_claims (
+  id              serial PRIMARY KEY,
+  asset_id        int NOT NULL UNIQUE REFERENCES assets(id) ON DELETE CASCADE,
+  due_date        date,                              -- tanggal jatuh tempo claim
+  trans_ref       text,                              -- Trans (kolom W)
+  expense_coa     text,                              -- COA expense (kolom X)
+  sales_tooling   numeric(20,2) NOT NULL DEFAULT 0,  -- SALES TOOLING AMOUNT (kolom Z)
+  expense_amount  numeric(20,2) NOT NULL DEFAULT 0,  -- EXPENSE AMOUNT (kolom AA)
+  fa_amount       numeric(20,2) NOT NULL DEFAULT 0,  -- FA AMOUNT (kolom AB)
+  fa_date         date,                              -- DATE (kolom AD)
+  remark          text,                              -- REMARK
+  mvd_status      text,                              -- MVD
+  mvd_note        text,                              -- MVD (kolom V)
+  note            text,                              -- catatan lain (kolom AF)
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS asset_claims_due_idx ON asset_claims(due_date);
+
+-- Migrasi database lama: pindahkan kolom Remark/MVD/Expense/FA dari assets ke asset_claims, lalu hapus kolomnya
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = 'assets' AND column_name = 'expense_amount') THEN
+    INSERT INTO asset_claims (asset_id, trans_ref, expense_coa, expense_amount, fa_amount, fa_date, remark, mvd_status, mvd_note, note)
+    SELECT id, trans_ref, expense_coa, expense_amount, fa_amount,
+           CASE WHEN fa_date ~ '^\d{4}-\d{2}-\d{2}$' THEN fa_date::date
+                WHEN fa_date ~ '^\d{1,2}\.\d{1,2}\.\d{2}$'
+                  THEN to_date(fa_date, 'DD.MM.YY') END,
+           remark, mvd_status, mvd_note, note
+    FROM assets
+    WHERE coalesce(trans_ref,'') <> '' OR coalesce(expense_coa,'') <> '' OR expense_amount <> 0 OR fa_amount <> 0
+       OR coalesce(fa_date,'') <> '' OR coalesce(remark,'') <> '' OR coalesce(mvd_status,'') <> ''
+       OR coalesce(mvd_note,'') <> '' OR coalesce(note,'') <> ''
+    ON CONFLICT (asset_id) DO NOTHING;
+    ALTER TABLE assets DROP COLUMN trans_ref, DROP COLUMN expense_coa, DROP COLUMN expense_amount, DROP COLUMN fa_amount,
+      DROP COLUMN fa_date, DROP COLUMN remark, DROP COLUMN mvd_status, DROP COLUMN mvd_note, DROP COLUMN note;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS reconciliations (
   id          serial PRIMARY KEY,

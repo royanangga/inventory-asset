@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 const items = [
   { href: "/", label: "Dashboard", icon: "M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10" },
   { href: "/assets", label: "Daftar Aset", icon: "M4 6h16M4 12h16M4 18h10" },
+  { href: "/claims", label: "Claim Customer", icon: "M9 5h6M9 9h6m-6 4h3M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" },
   { href: "/reconciliation", label: "Rekonsiliasi TB", icon: "M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
 ];
 

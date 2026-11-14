@@ -3,25 +3,26 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "../../../components/Modal";
 import { fmt, fmtDate } from "../../../lib/format";
-import type { Asset, GlAccount } from "../../../lib/types";
+import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
+import type { AssetRow, Claim, GlAccount } from "../../../lib/types";
 
 type Form = Record<string, string>;
 const EMPTY: Form = {
   gl_account: "", vendor: "", project: "", po_no: "", ringgisho_no: "", div_plant: "", tgl: "", trans_no: "", product_code: "", part_number: "",
-  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "", remark: "", mvd_status: "", mvd_note: "",
-  expense_amount: "0", fa_amount: "0", fa_date: "", note: "",
+  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "",
 };
 
-function toForm(a: Asset): Form {
+function toForm(a: AssetRow): Form {
   const f: Form = {};
   for (const k of Object.keys(EMPTY)) f[k] = (a as any)[k] === null || (a as any)[k] === undefined ? "" : String((a as any)[k]);
   return f;
 }
 
-export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset[]; accounts: GlAccount[]; exportQs: string }) {
+export default function AssetsClient({ rows, accounts, exportQs }: { rows: AssetRow[]; accounts: GlAccount[]; exportQs: string }) {
   const router = useRouter();
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [edit, setEdit] = useState<{ id: number | null; form: Form } | null>(null);
+  const [claim, setClaim] = useState<ClaimTarget | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [bulkGl, setBulkGl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,6 +32,15 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
   const allSelected = rows.length > 0 && rows.every((r) => sel.has(r.id));
   const toggleAll = () => setSel(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
   const toggle = (id: number) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  async function openClaim(r: AssetRow) {
+    let existing: Claim | null = null;
+    if (r.claim_id) {
+      const res = await fetch(`/api/claims/${r.claim_id}`);
+      if (res.ok) existing = await res.json();
+    }
+    setClaim({ assetId: r.id, title: [r.vendor, r.item_name].filter(Boolean).join(" · "), amount: r.amount, claimTo: r.claim_to, claim: existing });
+  }
 
   async function bulk(body: object, okMsg: (n: number) => string) {
     setBusy(true); setMsg("");
@@ -72,11 +82,11 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
               <th className="th w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Pilih semua" /></th>
               <th className="th">GL</th><th className="th">Vendor / Project</th><th className="th">PO / Tgl</th>
               <th className="th">Kode / Part</th><th className="th">Nama Barang</th>
-              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th" />
+              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Claim</th><th className="th" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && <tr><td colSpan={9} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={10} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} className={sel.has(r.id) ? "bg-brand-50/50" : "hover:bg-slate-50/70"}>
                 <td className="td"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Pilih aset ${r.id}`} /></td>
@@ -88,6 +98,13 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
                 <td className="td min-w-[200px]">{r.item_name}{r.claim_to && <div className="mt-1"><span className="badge bg-slate-100 text-slate-700">{r.claim_to}</span></div>}</td>
                 <td className="td num">{fmt(r.qty)}</td>
                 <td className={`td num font-medium ${r.amount < 0 ? "text-red-600" : ""}`}>{fmt(r.amount)}</td>
+                <td className="td whitespace-nowrap">
+                  {r.claimed
+                    ? <button className="badge bg-emerald-50 text-emerald-700 cursor-pointer hover:bg-emerald-100" onClick={() => openClaim(r)} title="Lihat / ubah claim">Diclaim{r.claim_due_date ? ` · jt ${fmtDate(r.claim_due_date)}` : ""}</button>
+                    : r.claim_id
+                      ? <button className="badge bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200" onClick={() => openClaim(r)} title="Ada catatan Remark/MVD, belum diclaim">Catatan</button>
+                      : <button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => openClaim(r)}>Claim</button>}
+                </td>
                 <td className="td"><button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => setEdit({ id: r.id, form: toForm(r) })}>Ubah</button></td>
               </tr>
             ))}
@@ -96,6 +113,7 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
       </div>
 
       {edit && <AssetModal edit={edit} accounts={accounts} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); router.refresh(); }} />}
+      {claim && <ClaimModal target={claim} onClose={() => setClaim(null)} onSaved={() => { setClaim(null); router.refresh(); }} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onDone={() => { setShowImport(false); router.refresh(); }} />}
     </>
   );
@@ -147,11 +165,7 @@ function AssetModal({ edit, accounts, onClose, onSaved }: { edit: { id: number |
           {T("ringgisho_lc", "Ringgisho PUR (LC)", "number")}
           {T("kesaisho_sales", "Kesaisho - Sales", "number")}
           {T("amount", "Inventory Asset (Purchase)", "number", "sm:col-span-3")}
-          {T("claim_to", "Claim ke")}
-          {T("expense_amount", "Expense", "number")}
-          {T("fa_amount", "FA Amount", "number")}
-          {T("remark", "Remark", "text", "sm:col-span-3")}
-          {T("mvd_status", "MVD", "text", "sm:col-span-3")}
+          {T("claim_to", "Customer MVD (Claim ADM / TBINA)", "text", "sm:col-span-3")}
         </div>
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
         <div className="flex justify-between pt-1">
@@ -163,7 +177,7 @@ function AssetModal({ edit, accounts, onClose, onSaved }: { edit: { id: number |
   );
 }
 
-type Preview = { sheet: string; rows: number; total: number; skipped: { row: number; reason: string }[] };
+type Preview = { sheet: string; rows: number; claims: number; total: number; skipped: { row: number; reason: string }[] };
 
 function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -200,6 +214,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm space-y-1">
             <div>Sheet: <b>{preview.sheet}</b></div>
             <div>{fmt(preview.rows)} baris aset · total Rp {fmt(preview.total)}</div>
+            <div>{fmt(preview.claims)} aset punya data claim (kolom W-AD / Remark / MVD) → masuk ke menu Claim Customer</div>
             {preview.skipped.length > 0 && <div className="text-slate-500">Baris catatan dilewati: {preview.skipped.map((s) => s.row).join(", ")}</div>}
           </div>
         )}

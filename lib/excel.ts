@@ -1,8 +1,8 @@
 import ExcelJS from "exceljs";
-import type { AssetInput } from "./types";
+import type { AssetInput, ClaimInput } from "./types";
 
 export type ParsedWorkbook = {
-  assets: (AssetInput & { source_row: number })[];
+  assets: (AssetInput & { source_row: number; claim: ClaimInput | null })[];
   glAccounts: { code: string; name: string }[];
   sheetName: string;
   skipped: { row: number; reason: string }[];
@@ -87,9 +87,26 @@ export async function parseWorkbook(input: ArrayBuffer | Buffer | string): Promi
       return;
     }
 
-    const glCode = str(c("AC")) ?? str(c("B"));
+    const glCode = str(c("B")) ?? str(c("AC")); // B = akun GL detail; AC hanya cadangan bila B kosong
     const glName = str(c("C"));
     if (glCode && glName && !gl.has(glCode)) gl.set(glCode, glName);
+
+    // Claim ke customer: kolom W-AD + Remark (T) / MVD (U-V) / catatan (AF). Hanya dibuat bila ada isinya.
+    const claimData: ClaimInput = {
+      due_date: null,
+      trans_ref: str(c("W")),
+      expense_coa: str(c("X")),
+      sales_tooling: num(c("Z")),
+      expense_amount: num(c("AA")),
+      fa_amount: num(c("AB")),
+      fa_date: parseSheetDate(c("AD")),
+      remark: str(c("T")),
+      mvd_status: str(c("U")),
+      mvd_note: str(c("V")),
+      note: str(c("AF")),
+    };
+    const hasClaim = Object.values(claimData).some((v) => (typeof v === "number" ? v !== 0 : !!v));
+    const claim = hasClaim ? claimData : null;
 
     assets.push({
       gl_account: glCode,
@@ -108,15 +125,7 @@ export async function parseWorkbook(input: ArrayBuffer | Buffer | string): Promi
       kesaisho_sales: num(c("Q")),
       amount: num(c("R")),
       claim_to: str(c("S")) === "0" ? null : str(c("S")),
-      remark: str(c("T")),
-      mvd_status: str(c("U")),
-      mvd_note: str(c("V")),
-      trans_ref: str(c("W")),
-      expense_coa: str(c("X")),
-      expense_amount: num(c("AA")),
-      fa_amount: num(c("AB")),
-      fa_date: str(c("AD")),
-      note: str(c("AF")),
+      claim,
       source_row: r,
     });
   });

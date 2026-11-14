@@ -23,6 +23,7 @@ export async function POST(req: Request) {
   const summary = {
     sheet: parsed.sheetName,
     rows: parsed.assets.length,
+    claims: parsed.assets.filter((a) => a.claim).length,
     total: parsed.assets.reduce((s, a) => s + a.amount, 0),
     skipped: parsed.skipped,
   };

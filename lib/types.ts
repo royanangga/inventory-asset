@@ -1,5 +1,6 @@
 export type GlAccount = { code: string; name: string; sort_order: number };
 
+/** Detail inventory asset = kolom B-T di sheet (tanpa Remark/MVD). */
 export type Asset = {
   id: number;
   gl_account: string | null;
@@ -18,22 +19,47 @@ export type Asset = {
   kesaisho_sales: number;
   amount: number;
   claim_to: string | null;
-  remark: string | null;
-  mvd_status: string | null;
-  mvd_note: string | null;
-  trans_ref: string | null;
-  expense_coa: string | null;
-  expense_amount: number;
-  fa_amount: number;
-  fa_date: string | null;
-  note: string | null;
   source_row: number | null;
 };
 
 export type AssetInput = Omit<Asset, "id" | "source_row"> & { source_row?: number | null };
 
+/** Baris daftar aset + status claim (untuk tabel Daftar Aset). */
+export type AssetRow = Asset & { claim_id: number | null; claim_due_date: string | null; claimed: boolean };
+
+/**
+ * Keterangan claim ke customer (kolom W-AD di sheet) + catatan tindak lanjut
+ * (Remark, MVD) + tanggal jatuh tempo. Satu aset maksimal satu claim.
+ */
+export type Claim = {
+  id: number;
+  asset_id: number;
+  due_date: string | null;
+  trans_ref: string | null;      // W  Trans (nomor JV)
+  expense_coa: string | null;    // X  COA expense
+  sales_tooling: number;         // Z  Sales Tooling Amount
+  expense_amount: number;        // AA Expense Amount
+  fa_amount: number;             // AB FA Amount
+  fa_date: string | null;        // AD Date
+  remark: string | null;         // Remark
+  mvd_status: string | null;     // MVD
+  mvd_note: string | null;       // MVD (target/keterangan)
+  note: string | null;           // catatan lain (kolom AF)
+};
+export type ClaimInput = Omit<Claim, "id" | "asset_id">;
+
+export type ClaimRow = Claim & {
+  gl_account: string | null; vendor: string | null; project: string | null; po_no: string | null;
+  item_name: string | null; claim_to: string | null; amount: number;
+};
+
 export const ASSET_TEXT_FIELDS = [
   "gl_account","trans_no","vendor","project","ringgisho_no","po_no","div_plant","tgl","product_code",
-  "part_number","item_name","claim_to","remark","mvd_status","mvd_note","trans_ref","expense_coa","fa_date","note",
+  "part_number","item_name","claim_to",
 ] as const;
-export const ASSET_NUM_FIELDS = ["qty","ringgisho_lc","kesaisho_sales","amount","expense_amount","fa_amount"] as const;
+export const ASSET_NUM_FIELDS = ["qty","ringgisho_lc","kesaisho_sales","amount"] as const;
+
+export const CLAIM_TEXT_FIELDS = [
+  "due_date","trans_ref","expense_coa","fa_date","remark","mvd_status","mvd_note","note",
+] as const;
+export const CLAIM_NUM_FIELDS = ["sales_tooling","expense_amount","fa_amount"] as const;
