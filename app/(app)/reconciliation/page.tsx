@@ -14,8 +14,8 @@ export default async function ReconList() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold">Rekonsiliasi TB</h1>
-        <p className="text-sm text-slate-500 max-w-2xl">Isi saldo Trial Balance per akun GL, lalu sistem membandingkannya dengan total daftar aset dan menunjukkan selisihnya.</p>
+        <h1 className="title">Rekonsiliasi TB</h1>
+        <p className="subtitle">Isi saldo Trial Balance per akun GL, lalu sistem membandingkannya dengan total daftar aset dan menunjukkan selisihnya.</p>
       </header>
 
       <NewRecon defaultTitle={defTitle} defaultDate={lastMonthEnd.toISOString().slice(0, 10)} />
@@ -29,10 +29,10 @@ export default async function ReconList() {
               <tr key={r.id} className="hover:bg-slate-50/70">
                 <td className="td font-medium"><Link href={`/reconciliation/${r.id}`} className="hover:underline">{r.title}</Link></td>
                 <td className="td">{fmtDate(r.as_of)}</td>
-                <td className="td num">{r.filled ? fmt(r.tb_total) : "-"}</td>
+                <td className="td num amt">{r.filled ? fmt(r.tb_total) : "-"}</td>
                 <td className="td">{r.filled} akun</td>
                 <td className="td"><span className={`badge ${r.status === "final" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{r.status === "final" ? "Final" : "Draft"}</span></td>
-                <td className="td"><Link href={`/reconciliation/${r.id}`} className="text-brand-600 text-sm hover:underline">Buka</Link></td>
+                <td className="td"><Link href={`/reconciliation/${r.id}`} className="link">Buka</Link></td>
               </tr>
             ))}
           </tbody>

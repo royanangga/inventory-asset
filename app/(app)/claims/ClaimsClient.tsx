@@ -40,13 +40,13 @@ export default function ClaimsClient({ rows, exportQs }: { rows: ClaimRow[]; exp
                   </td>
                   <td className="td whitespace-nowrap">{r.claim_to ?? "-"}</td>
                   <td className="td min-w-[240px]"><div>{r.item_name}</div><div className="text-xs text-slate-500">{r.vendor} · {r.project} · {r.po_no}</div></td>
-                  <td className="td num">{fmt(r.amount)}</td>
+                  <td className="td num amt">{fmt(r.amount)}</td>
                   <td className="td whitespace-nowrap text-slate-600"><div>{r.trans_ref}</div><div className="text-xs text-slate-400">{r.expense_coa}</div></td>
-                  <td className="td num">{r.sales_tooling ? fmt(r.sales_tooling) : "-"}</td>
-                  <td className="td num">{r.expense_amount ? fmt(r.expense_amount) : "-"}</td>
-                  <td className="td num">{r.fa_amount ? fmt(r.fa_amount) : "-"}{r.fa_date && <div className="text-xs text-slate-400">{fmtDate(r.fa_date)}</div>}</td>
+                  <td className="td num amt">{r.sales_tooling ? fmt(r.sales_tooling) : "-"}</td>
+                  <td className="td num amt">{r.expense_amount ? fmt(r.expense_amount) : "-"}</td>
+                  <td className="td num amt">{r.fa_amount ? fmt(r.fa_amount) : "-"}{r.fa_date && <div className="text-xs text-slate-400">{fmtDate(r.fa_date)}</div>}</td>
                   <td className="td min-w-[220px] text-slate-600"><div>{r.remark}</div><div className="text-xs text-slate-400">{[r.mvd_status, r.mvd_note].filter(Boolean).join(" · ")}</div></td>
-                  <td className="td"><button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => open(r)}>Ubah</button></td>
+                  <td className="td"><button className="link" onClick={() => open(r)}>Ubah</button></td>
                 </tr>
               );
             })}

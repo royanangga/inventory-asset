@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import MoneyInput from "../../../../components/MoneyInput";
 import Modal from "../../../../components/Modal";
+import Seal from "../../../../components/Seal";
+import Ring from "../../../../components/Ring";
+import Stat from "../../../../components/Stat";
 import { fmt, fmtDate } from "../../../../lib/format";
 import { computeLine, findHints, round2, totals, type Adj, type LineInput, type LiteAsset } from "../../../../lib/recon";
 import type { Recon } from "../../../../lib/reconData";
@@ -88,6 +91,9 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
   }
 
   const bigDiff = tot.filled > 0 && Math.abs(tot.diff) > 1;
+  const okCount = results.filter((r) => r.status === "match" || r.status === "explained").length;
+  const balanced = tot.total > 0 && results.every((r) => r.status === "match");
+  const maxDiff = Math.max(...results.map((r) => Math.abs(r.diff ?? 0)), 1);
 
   return (
     <div className="space-y-5">
@@ -96,7 +102,7 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2 min-w-[260px] flex-1">
           <input value={title} disabled={locked} onChange={(e) => { setTitle(e.target.value); touch(); }} aria-label="Judul"
-            className="text-2xl font-semibold bg-transparent border-b border-transparent hover:border-slate-300 focus:border-brand-500 outline-none w-full max-w-xl disabled:hover:border-transparent" />
+            className="title bg-transparent border-b border-transparent hover:border-slate-300 focus:border-brand-500 outline-none w-full max-w-xl disabled:hover:border-transparent" />
           <div className="flex items-center gap-3 text-sm text-slate-600">
             <label className="flex items-center gap-2">Posisi per
               <input type="date" value={asOf} disabled={locked} onChange={(e) => { setAsOf(e.target.value); touch(); }} className="input !w-auto !py-1" /></label>
@@ -104,7 +110,8 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
             {dirty && <span className="text-amber-600">Belum disimpan</span>}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-wrap gap-3 items-center">
+          {locked && <Seal kind="date" size={92} animate mid={fmtDate(recon.finalized_at)} title={`Rekonsiliasi final ${fmtDate(recon.finalized_at)}`} />}
           <a className="btn" href={`/api/reconciliations/${recon.id}/export`}>Ekspor Excel</a>
           {locked ? (
             <button className="btn" onClick={reopen} disabled={busy}>Buka kembali</button>
@@ -124,8 +131,20 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
         <Stat label="Total saldo TB (terisi)" value={tot.filled ? fmt(tot.tb) : "-"} sub={`${tot.filled} dari ${tot.total} akun`} />
         <Stat label="Total saldo sistem (akun terisi)" value={fmt(tot.sysFilled)} sub={`Seluruh akun: ${fmt(tot.sys)}`} />
         <Stat label="Selisih (TB − Sistem)" value={tot.filled ? fmt(tot.diff) : "-"} tone={!tot.filled ? undefined : bigDiff ? "bad" : "good"} sub={tot.filled ? (bigDiff ? "Perlu ditelusuri" : "Sesuai") : "Isi saldo TB dulu"} />
-        <Stat label="Akun sesuai" value={`${results.filter((r) => r.status === "match" || r.status === "explained").length} / ${tot.total}`} />
+        <div className="card p-4 md:p-5 flex items-center gap-4">
+          <Ring value={tot.total ? okCount / tot.total : 0} size={64} stroke={7} tone={okCount === tot.total && tot.total > 0 ? "good" : "brand"}>
+            <span className="text-sm font-medium tabular-nums">{okCount}/{tot.total}</span>
+          </Ring>
+          <div><div className="text-xs font-medium text-slate-500">Akun sesuai</div><div className="text-xs text-slate-500 mt-1">{okCount === tot.total && tot.total > 0 ? "Semua akun beres" : `${tot.total - okCount} akun belum beres`}</div></div>
+        </div>
       </section>
+
+      {balanced && !locked && (
+        <div className="rise rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-3" role="status">
+          <Seal size={30} animate />
+          <span><b>Semua akun seimbang.</b> Saldo TB sama dengan saldo sistem di setiap akun. Simpan, lalu finalkan untuk mengunci hasilnya.</span>
+        </div>
+      )}
 
       {tot.filled === tot.total && !bigDiff && results.some((r) => r.status === "diff") && (
         <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-900">
@@ -167,12 +186,15 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
                       <MoneyInput label={`Saldo TB ${r.gl_account}`} value={tb[r.gl_account] ?? null} disabled={locked} placeholder="0"
                         onChange={(v) => { setTb({ ...tb, [r.gl_account]: v }); touch(); }} />
                     </td>
-                    <td className="td num"><div>{fmt(r.system_balance)}</div><div className="text-xs text-slate-400">{r.system_count} item</div></td>
-                    <td className={`td num font-medium ${r.diff && Math.abs(r.diff) > 1 ? "text-red-600" : ""}`}>{r.diff === null ? "-" : fmt(r.diff)}</td>
+                    <td className="td num"><div className="amt">{fmt(r.system_balance)}</div><div className="text-xs text-slate-400">{r.system_count} item</div></td>
+                    <td className="td num">
+                      <div className={`font-medium amt ${r.diff && Math.abs(r.diff) > 1 ? "text-red-600" : ""}`}>{r.diff === null ? "-" : fmt(r.diff)}</div>
+                      {r.diff !== null && <DiffBar diff={r.diff} max={maxDiff} unexplained={r.status === "diff"} />}
+                    </td>
                     <td className="td num text-slate-600">{r.explained ? fmt(r.explained) : "-"}</td>
                     <td className={`td num ${r.status === "diff" ? "text-red-600 font-medium" : "text-slate-600"}`}>{r.unexplained === null ? "-" : fmt(r.unexplained)}</td>
                     <td className="td"><span className={`badge ${st.cls}`}>{st.text}</span></td>
-                    <td className="td"><button className="text-brand-600 text-sm hover:underline cursor-pointer whitespace-nowrap" aria-expanded={isOpen}
+                    <td className="td"><button className="link whitespace-nowrap" aria-expanded={isOpen}
                       onClick={() => setOpen(isOpen ? null : r.gl_account)}>{isOpen ? "Tutup" : "Telusuri"}</button></td>
                   </tr>
                   {isOpen && (
@@ -198,7 +220,7 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
         </table>
         {!locked && (
           <div className="px-4 py-3 border-t border-slate-100 text-sm">
-            <button className="text-brand-600 hover:underline cursor-pointer" onClick={() => setAddAcc(true)}>+ Tambah akun GL</button>
+            <button className="link" onClick={() => setAddAcc(true)}>+ Tambah akun GL</button>
           </div>
         )}
       </div>
@@ -219,12 +241,16 @@ export default function ReconEditor({ initial, assets }: { initial: Initial; ass
 
 const RowGroup = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "good" | "bad" }) {
+/** Batang selisih dua arah dari titik nol: kanan = TB lebih besar, kiri = sistem lebih besar. */
+function DiffBar({ diff, max, unexplained }: { diff: number; max: number; unexplained: boolean }) {
+  const w = Math.min(Math.abs(diff) / max, 1) * 50;
+  const color = Math.abs(diff) <= 1 ? "var(--e600)" : unexplained ? "var(--r500)" : "var(--k700)";
   return (
-    <div className="card p-4">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tabular-nums ${tone === "bad" ? "text-red-600" : tone === "good" ? "text-emerald-600" : ""}`}>{value}</div>
-      {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
+    <div className="relative mt-1.5 ml-auto h-1.5 w-28 rounded-full bg-slate-100" aria-hidden="true">
+      <span className="absolute inset-y-[-2px] left-1/2 w-px bg-slate-300" />
+      {Math.abs(diff) > 1
+        ? <span className="absolute inset-y-0 rounded-full transition-all duration-500" style={{ background: color, width: `${Math.max(w, 3)}%`, left: diff > 0 ? "50%" : undefined, right: diff < 0 ? "50%" : undefined }} />
+        : <span className="absolute -top-px left-1/2 -ml-[3px] h-2 w-2 rounded-full" style={{ background: color }} />}
     </div>
   );
 }
@@ -284,7 +310,7 @@ function Detail({ r, assets, adjs, setAdjs, locked }: {
       <section>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold">Rincian aset di sistem{locked ? " (kondisi saat ini)" : ""}</h3>
-          <Link className="text-xs text-brand-600 hover:underline" href={`/assets?gl=${r.gl_account}`}>Buka di Daftar Aset →</Link>
+          <Link className="link !text-xs" href={`/assets?gl=${r.gl_account}`}>Buka di Daftar Aset →</Link>
         </div>
         {mine.length === 0 ? <p className="text-sm text-slate-500">Tidak ada aset pada akun ini.</p> : (
           <div className="card overflow-hidden">
@@ -296,7 +322,7 @@ function Detail({ r, assets, adjs, setAdjs, locked }: {
             </table>
           </div>
         )}
-        {mine.length > 0 && <button className="text-sm text-brand-600 hover:underline mt-3 cursor-pointer" onClick={() => setShowItems(true)}>Lihat {mine.length} item</button>}
+        {mine.length > 0 && <button className="link mt-3" onClick={() => setShowItems(true)}>Lihat {mine.length} item</button>}
       </section>
 
       {showItems && (

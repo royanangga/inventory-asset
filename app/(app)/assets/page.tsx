@@ -2,6 +2,7 @@ import Link from "next/link";
 import { distinctValues, getAccounts, listAssets, CHECK_LABELS } from "../../../lib/queries";
 import AssetsClient from "./AssetsClient";
 import AssetFilters from "./AssetFilters";
+import { fmtDate } from "../../../lib/format";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
@@ -11,7 +12,7 @@ type SP = Promise<Record<string, string | undefined>>;
 export default async function AssetsPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const page = Math.max(Number(sp.page) || 1, 1);
-  const filters = { q: sp.q, gl: sp.gl, project: sp.project, plant: sp.plant, check: sp.check, due: sp.due };
+  const filters = { q: sp.q, gl: sp.gl, project: sp.project, plant: sp.plant, check: sp.check, due: sp.due, dueon: sp.dueon };
   const [{ rows, total, amount, qty }, accounts, vals] = await Promise.all([listAssets(filters, page, PAGE_SIZE), getAccounts(), distinctValues()]);
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
 
@@ -26,11 +27,18 @@ export default async function AssetsPage({ searchParams }: { searchParams: SP })
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-semibold">Daftar Aset</h1>
-        <p className="text-sm text-slate-500">Detail inventory asset (sumber: sheet “Inventory asset per okt26”, kolom B–T).</p>
+        <h1 className="title">Daftar Aset</h1>
+        <p className="subtitle">Detail inventory asset (sumber: sheet “Inventory asset per okt26”, kolom B–T).</p>
       </header>
 
       <AssetFilters accounts={accounts} projects={vals.projects} plants={vals.plants} total={total} amount={amount} />
+
+      {sp.dueon && /^\d{4}-\d{2}-\d{2}$/.test(sp.dueon) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 flex justify-between">
+          <span>Menampilkan aset yang jatuh tempo pada <b>{fmtDate(sp.dueon)}</b></span>
+          <Link href="/assets" className="underline">Tutup</Link>
+        </div>
+      )}
 
       {sp.check && CHECK_LABELS[sp.check] && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 flex justify-between">

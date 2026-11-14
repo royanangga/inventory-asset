@@ -2,7 +2,7 @@ import { sql } from "./db";
 import { DUE_SOON_DAYS } from "./format";
 import type { Asset, AssetRow, ClaimRow, GlAccount } from "./types";
 
-export type AssetFilters = { q?: string; gl?: string; project?: string; plant?: string; check?: string; due?: string };
+export type AssetFilters = { q?: string; gl?: string; project?: string; plant?: string; check?: string; due?: string; dueon?: string };
 
 /** Hari ini menurut waktu Jakarta (agar alert jatuh tempo tidak bergeser karena zona waktu server). */
 const TODAY = () => sql`(now() at time zone 'Asia/Jakarta')::date`;
@@ -40,6 +40,7 @@ function where(f: AssetFilters) {
   if (f.due === "soon") parts.push(sql`due_date > ${TODAY()} and due_date <= ${TODAY()} + ${DUE_SOON_DAYS}::int and not ${IS_CLAIMED()}`);
   if (f.due === "nodue") parts.push(sql`due_date is null and not ${IS_CLAIMED()}`);
   if (f.due === "claimed") parts.push(IS_CLAIMED());
+  if (f.dueon && /^\d{4}-\d{2}-\d{2}$/.test(f.dueon)) parts.push(sql`due_date = ${f.dueon} and not ${IS_CLAIMED()}`);
   if (f.check && CHECKS[f.check]) parts.push(CHECKS[f.check].where());
   if (!parts.length) return sql`true`;
   return parts.reduce((a, b) => sql`${a} and ${b}`);
@@ -141,4 +142,15 @@ export async function dueAlerts(): Promise<DueAlerts> {
       coalesce(sum(amount) filter (where due_date > ${TODAY()} and due_date <= ${TODAY()} + ${DUE_SOON_DAYS}::int), 0) as soon_amount
     from assets where due_date is not null and id not in (select asset_id from asset_claims where claimed)`;
   return { due: r.due, dueAmount: Number(r.due_amount), overdue: r.overdue, today: r.today, soon: r.soon, soonAmount: Number(r.soon_amount) };
+}
+
+export type DueDay = { d: string; n: number; amount: number };
+
+/** Aset yang belum di-claim, dikelompokkan per tanggal jatuh tempo (termasuk yang sudah lewat) hingga `days` hari ke depan. */
+export async function dueTimeline(days = 45): Promise<DueDay[]> {
+  const rows = await sql`select due_date::text as d, count(*)::int as n, coalesce(sum(amount),0) as amount
+    from assets where due_date is not null and id not in (select asset_id from asset_claims where claimed)
+      and due_date < ${TODAY()} + ${days}::int
+    group by due_date order by due_date`;
+  return rows.map((r) => ({ d: String(r.d).slice(0, 10), n: r.n as number, amount: Number(r.amount) }));
 }

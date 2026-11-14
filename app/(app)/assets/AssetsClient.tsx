@@ -1,9 +1,10 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "../../../components/Modal";
 import { DUE_SOON_DAYS, daysUntil, fmt, fmtDate, todayJakarta } from "../../../lib/format";
 import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
+import Seal from "../../../components/Seal";
 import type { AssetRow, Claim, GlAccount } from "../../../lib/types";
 
 type Form = Record<string, string>;
@@ -29,6 +30,9 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
   const today = todayJakarta();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [compact, setCompact] = useState(false);
+  useEffect(() => { try { setCompact(localStorage.getItem("density") === "compact"); } catch { /* abaikan */ } }, []);
+  const toggleDensity = () => setCompact((c) => { const n = !c; try { localStorage.setItem("density", n ? "compact" : "comfy"); } catch { /* abaikan */ } return n; });
   const accName = useMemo(() => Object.fromEntries(accounts.map((a) => [a.code, a.name])), [accounts]);
 
   const selRows = rows.filter((r) => sel.has(r.id));
@@ -61,11 +65,15 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
         <button className="btn" onClick={() => setShowImport(true)}>Impor Excel</button>
         <a className="btn" href={`/api/assets/export?${exportQs}`}>Ekspor Excel</a>
         {msg && <span className="text-sm text-emerald-700 ml-2" role="status">{msg}</span>}
+        <button className="btn ml-auto" onClick={toggleDensity} aria-pressed={compact} title="Ubah kerapatan baris">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">{compact ? <path d="M4 5h16M4 10h16M4 15h16M4 20h16" /> : <path d="M4 6h16M4 12h16M4 18h16" />}</svg>
+          {compact ? "Rapat" : "Lega"}
+        </button>
       </div>
 
       {sel.size > 0 && (
-        <div className="card flex flex-wrap items-center gap-3 px-4 py-3 border-brand-100 bg-brand-50/60">
-          <span className="text-sm font-medium">{sel.size} dipilih · Rp {fmt(rows.filter((r) => sel.has(r.id)).reduce((t, r) => t + r.amount, 0))}</span>
+        <div className="rise card fixed bottom-4 inset-x-4 md:left-[16rem] md:right-8 z-40 flex flex-wrap items-center gap-3 px-4 py-3" style={{ boxShadow: "0 24px 60px -18px rgba(10,15,40,0.55)", borderColor: "var(--b500)" }} role="region" aria-label="Aksi untuk aset terpilih">
+          <span className="text-sm font-medium"><b>{sel.size}</b> dipilih · <span className="tabular-nums amt">Rp {fmt(rows.filter((r) => sel.has(r.id)).reduce((t, r) => t + r.amount, 0))}</span></span>
           <select value={bulkGl} onChange={(e) => setBulkGl(e.target.value)} className="input !w-auto" aria-label="Akun GL tujuan">
             <option value="">Pindahkan ke akun GL…</option>
             {accounts.map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
@@ -81,7 +89,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
         </div>
       )}
 
-      <div className="card overflow-x-auto">
+      <div className={`card overflow-x-auto ${compact ? "density-compact" : ""}`}>
         <table className="w-full min-w-[960px] text-[13px]">
           <thead>
             <tr>
@@ -107,7 +115,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                 <td className="td text-slate-600 whitespace-nowrap"><div>{r.product_code}</div><div className="text-xs text-slate-400">{r.part_number}</div></td>
                 <td className="td min-w-[200px]">{r.item_name}{r.claim_to && <div className="mt-1"><span className="badge bg-slate-100 text-slate-700">{r.claim_to}</span></div>}</td>
                 <td className="td num">{fmt(r.qty)}</td>
-                <td className={`td num font-medium ${r.amount < 0 ? "text-red-600" : ""}`}>{fmt(r.amount)}</td>
+                <td className={`td num font-medium amt ${r.amount < 0 ? "text-red-600" : ""}`}>{fmt(r.amount)}</td>
                 <td className="td whitespace-nowrap">
                   {days === null ? <span className="text-slate-400">-</span> : (
                     <>
@@ -119,14 +127,14 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                 </td>
                 <td className="td whitespace-nowrap">
                   {r.claimed
-                    ? <button className="badge bg-emerald-50 text-emerald-700 cursor-pointer hover:bg-emerald-100" onClick={() => openClaim(r)} title="Lihat / ubah claim">Diclaim</button>
+                    ? <button className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:underline underline-offset-4" style={{ color: "var(--stamp)" }} onClick={() => openClaim(r)} title="Lihat / ubah claim"><Seal size={20} />Diclaim</button>
                     : isDue
                       ? <button className="btn-danger !py-1 !px-2.5 text-xs" onClick={() => openClaim(r)}>Claim sekarang</button>
                     : r.claim_id
                       ? <button className="badge bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200" onClick={() => openClaim(r)} title="Ada catatan Remark/MVD, belum diclaim">Catatan</button>
-                      : <button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => openClaim(r)}>Claim</button>}
+                      : <button className="link" onClick={() => openClaim(r)}>Claim</button>}
                 </td>
-                <td className="td"><button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => setEdit({ id: r.id, form: toForm(r) })}>Ubah</button></td>
+                <td className="td"><button className="link" onClick={() => setEdit({ id: r.id, form: toForm(r) })}>Ubah</button></td>
               </tr>
               );
             })}
@@ -137,20 +145,20 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                 <tr className="text-brand-600">
                   <td className="td" colSpan={6}>Dipilih ({fmt(sel.size)} baris)</td>
                   <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.qty), 0))}</td>
-                  <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.amount), 0))}</td>
+                  <td className="td num amt">{fmt(selRows.reduce((t, r) => t + Number(r.amount), 0))}</td>
                   <td className="td" colSpan={3} />
                 </tr>
               )}
               <tr>
                 <td className="td" colSpan={6}>Subtotal halaman ini ({fmt(rows.length)} baris)</td>
                 <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.qty), 0))}</td>
-                <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.amount), 0))}</td>
+                <td className="td num amt">{fmt(rows.reduce((t, r) => t + Number(r.amount), 0))}</td>
                 <td className="td" colSpan={3} />
               </tr>
               <tr>
                 <td className="td" colSpan={6}>Total semua hasil filter ({fmt(totals.count)} item)</td>
                 <td className="td num">{fmt(totals.qty)}</td>
-                <td className="td num">{fmt(totals.amount)}</td>
+                <td className="td num amt">{fmt(totals.amount)}</td>
                 <td className="td" colSpan={3} />
               </tr>
             </tfoot>

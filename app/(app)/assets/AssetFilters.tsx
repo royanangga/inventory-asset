@@ -34,13 +34,13 @@ export default function AssetFilters({ accounts, projects, plants, total, amount
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => apply("q", v.trim()), 400);
   }
-  const hasFilter = ["q", "gl", "project", "plant", "check", "due"].some((k) => sp.get(k));
+  const hasFilter = ["q", "gl", "project", "plant", "check", "due", "dueon"].some((k) => sp.get(k));
 
   return (
     <div className="card p-4 space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1.2fr_auto]">
         <label><span className="label">Cari</span>
-          <input value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Vendor, PO, part number, nama barang…" className="input mt-1" /></label>
+          <input data-search value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Vendor, PO, part number, nama barang…  ( tekan / )" className="input mt-1" /></label>
         <label><span className="label">Akun GL</span>
           <select value={sp.get("gl") ?? ""} onChange={(e) => apply("gl", e.target.value)} className="input mt-1">
             <option value="">Semua</option>
@@ -69,9 +69,9 @@ export default function AssetFilters({ accounts, projects, plants, total, amount
           <button type="button" className="btn" disabled={!hasFilter} onClick={() => { applied.current = ""; setQ(""); start(() => router.replace(path)); }}>Reset</button>
         </div>
       </div>
-      <div className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-lg bg-slate-50 border border-slate-200 px-4 py-2.5 text-sm ${pending ? "opacity-60" : ""}`} aria-live="polite">
+      <div className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-lg bg-slate-50 border border-slate-200 px-4 py-2.5 text-sm transition-opacity ${pending ? "opacity-50" : ""}`} aria-live="polite">
         <span className="text-slate-600">{hasFilter ? "Hasil filter" : "Semua data"}: <b>{fmt(total)}</b> item</span>
-        <span className="text-slate-600">Total Inventory Asset: <b className="text-slate-900 text-base">{fmtIdr(amount)}</b></span>
+        <span className="text-slate-600">Total Inventory Asset: <b className="text-slate-900 text-base tabular-nums amt">{fmtIdr(amount)}</b></span>
       </div>
     </div>
   );

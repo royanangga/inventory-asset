@@ -1,26 +1,171 @@
 @import "tailwindcss";
 
+/*
+  Desain "Buku Besar bercap":
+  - kertas buku besar (garis tipis), tinta indigo (aizome), cap tanggal bergaya hanko
+  - merah hanya untuk peringatan jatuh tempo; hijau jade untuk "sesuai"; cap memakai tinta indigo
+  Palet slate/red/amber/emerald/sky/brand di-remap ke variabel agar seluruh halaman lama
+  otomatis mengikuti tema terang/gelap tanpa mengubah kelas Tailwind-nya.
+*/
+
 @theme {
-  --color-brand-50: #eef6ff;
-  --color-brand-100: #d9eaff;
-  --color-brand-500: #2563eb;
-  --color-brand-600: #1d4fd8;
-  --color-brand-700: #1a3fae;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-plex), "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-slate-50: var(--s50);   --color-slate-100: var(--s100); --color-slate-200: var(--s200);
+  --color-slate-300: var(--s300); --color-slate-400: var(--s400); --color-slate-500: var(--s500);
+  --color-slate-600: var(--s600); --color-slate-700: var(--s700); --color-slate-800: var(--s800);
+  --color-slate-900: var(--s900);
+
+  --color-brand-50: var(--b50);   --color-brand-100: var(--b100); --color-brand-500: var(--b500);
+  --color-brand-600: var(--b600); --color-brand-700: var(--b700);
+
+  --color-red-50: var(--r50);   --color-red-100: var(--r100); --color-red-200: var(--r200);
+  --color-red-300: var(--r300); --color-red-400: var(--r400); --color-red-500: var(--r500);
+  --color-red-600: var(--r600); --color-red-700: var(--r700); --color-red-900: var(--r900);
+
+  --color-amber-50: var(--a50);   --color-amber-100: var(--a100); --color-amber-200: var(--a200);
+  --color-amber-600: var(--a600); --color-amber-700: var(--a700); --color-amber-800: var(--a800);
+  --color-amber-900: var(--a900);
+
+  --color-emerald-50: var(--e50); --color-emerald-100: var(--e100); --color-emerald-600: var(--e600);
+  --color-emerald-700: var(--e700); --color-emerald-800: var(--e800);
+
+  --color-sky-50: var(--k50); --color-sky-200: var(--k200); --color-sky-700: var(--k700); --color-sky-900: var(--k900);
 }
 
-:root { --bg: #f5f7fa; --fg: #0f172a; }
-body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+:root {
+  color-scheme: light;
+  --bg: #eceef4;
+  --surface: #ffffff;
+  --fg: #141a2b;
+  --line: #dde0ea;
+  --line-strong: #c3c8d7;
+  --ink: #111729;           /* sidebar & hero: selalu gelap */
+  --ink-2: #1a2238;
+  --primary: #2d3c9e;
+  --primary-hover: #232f7e;
+  --on-primary: #ffffff;
+  --stamp: #2d3c9e;
+  --rule: rgba(20, 26, 43, 0.055);
+  --shadow: 0 1px 0 rgba(20, 26, 43, 0.03), 0 10px 28px -14px rgba(26, 34, 80, 0.22);
+
+  --s50: #f5f6fa; --s100: #eceef4; --s200: #dde0ea; --s300: #c3c8d7; --s400: #8a92a8;
+  --s500: #656d84; --s600: #4b536a; --s700: #353c52; --s800: #232940; --s900: #141a2b;
+  --b50: #eef0fb; --b100: #dce1f7; --b500: #3b4db8; --b600: #2d3c9e; --b700: #232f7e;
+  --r50: #fcefed; --r100: #f9dbd7; --r200: #f1b9b2; --r300: #e58f86; --r400: #d9625a; --r500: #c8372d;
+  --r600: #b52d24; --r700: #9a241c; --r900: #5e1611;
+  --a50: #fbf3e2; --a100: #f6e6bf; --a200: #ebd08c; --a600: #a8700a; --a700: #8c5c06; --a800: #744b05; --a900: #5a3a04;
+  --e50: #e6f4ef; --e100: #cbe9df; --e600: #1b7f66; --e700: #146a54; --e800: #0f5442;
+  --k50: #e8f1fa; --k200: #bbd6ee; --k700: #1e5f96; --k900: #123b60;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b101b;
+  --surface: #131a2a;
+  --fg: #e9ecf5;
+  --line: #243049;
+  --line-strong: #364563;
+  --ink: #111a31;
+  --ink-2: #172140;
+  --primary: #5a6de6;
+  --primary-hover: #7081ee;
+  --on-primary: #ffffff;
+  --stamp: #9aa8f4;
+  --rule: rgba(180, 195, 255, 0.05);
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 14px 30px -16px rgba(0, 0, 0, 0.7);
+
+  --s50: #182035; --s100: #1e2740; --s200: #2a3552; --s300: #3d4968; --s400: #7a85a4;
+  --s500: #98a2be; --s600: #b3bbd1; --s700: #cdd3e3; --s800: #e1e5f0; --s900: #f1f3f9;
+  --b50: #1c2447; --b100: #28316b; --b500: #7f90ee; --b600: #a3b0f5; --b700: #c3cbfa;
+  --r50: #2c1618; --r100: #3d1d20; --r200: #5a2a2d; --r300: #7c3a3d; --r400: #c4473f; --r500: #e5594d;
+  --r600: #f0786d; --r700: #f59a92; --r900: #fbc9c4;
+  --a50: #29211a; --a100: #3a2e17; --a200: #54431c; --a600: #e0ae48; --a700: #ebbe62; --a800: #f1cc82; --a900: #f7dda6;
+  --e50: #11261f; --e100: #17352b; --e600: #4cc2a0; --e700: #66d0b0; --e800: #8cddc4;
+  --k50: #12233a; --k200: #26466f; --k700: #7db6ec; --k900: #b5d6f5;
+}
+
+html { background: var(--bg); }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1, "ss01" 0;
+}
+::selection { background: color-mix(in oklab, var(--primary) 30%, transparent); }
+:focus-visible { outline: 2px solid var(--b500); outline-offset: 2px; }
+
+/* Mode privasi: nominal diburamkan, arahkan kursor untuk mengintip */
+.amt { transition: filter 0.2s ease; }
+html[data-privacy="on"] .amt { filter: blur(8px); user-select: none; }
+html[data-privacy="on"] .amt:hover { filter: none; }
 
 @layer components {
-  .card { @apply bg-white border border-slate-200 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.04)]; }
+  .card { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
   .label { @apply text-xs font-medium text-slate-600; }
-  .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:bg-slate-50 disabled:text-slate-500; }
-  .btn { @apply inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none cursor-pointer; }
-  .btn-primary { @apply inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50 disabled:pointer-events-none cursor-pointer; }
-  .btn-danger { @apply inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3.5 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50 cursor-pointer; }
-  .th { @apply px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 whitespace-nowrap; }
-  .td { @apply px-3 py-2.5 text-sm align-top; }
-  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .input {
+    @apply w-full text-sm outline-none transition disabled:text-slate-500;
+    background: var(--surface); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 10px; padding: 0.55rem 0.75rem;
+  }
+  .input:focus { border-color: var(--b500); box-shadow: 0 0 0 3px color-mix(in oklab, var(--b500) 22%, transparent); }
+  .input:disabled { background: var(--s50); }
+  .input::placeholder { color: var(--s400); }
+
+  .btn, .btn-primary, .btn-danger {
+    @apply inline-flex items-center gap-2 text-sm font-medium transition cursor-pointer disabled:opacity-50 disabled:pointer-events-none;
+    border-radius: 10px; padding: 0.5rem 0.9rem; border: 1px solid transparent; line-height: 1.25;
+  }
+  .btn:active, .btn-primary:active, .btn-danger:active { transform: translateY(1px); }
+  .btn { background: var(--surface); color: var(--s700); border-color: var(--line-strong); }
+  .btn:hover { background: var(--s50); border-color: var(--s300); }
+  .btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: 0 6px 16px -8px color-mix(in oklab, var(--primary) 80%, transparent); }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-danger { background: var(--surface); color: var(--r600); border-color: var(--r200); }
+  .btn-danger:hover { background: var(--r50); }
+
+  .th { @apply px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap; color: var(--s500); background: var(--s50); letter-spacing: 0.01em; }
+  .td { @apply px-3 text-sm align-top; padding-top: 0.7rem; padding-bottom: 0.7rem; }
+  .density-compact .td { padding-top: 0.28rem; padding-bottom: 0.28rem; }
+  .num { @apply text-right whitespace-nowrap; font-variant-numeric: tabular-nums; }
   .badge { @apply inline-flex whitespace-nowrap items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+  .kbd {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 1.35rem; height: 1.35rem; padding: 0 0.3rem;
+    font-size: 0.68rem; font-weight: 500; border-radius: 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px;
+    color: var(--s600); background: var(--surface);
+  }
+  .link { color: var(--b600); font-size: 0.875rem; cursor: pointer; }
+  .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Panel gelap berkertas buku besar */
+  .ledger {
+    background-color: var(--ink);
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(255, 255, 255, 0.045) 35px, rgba(255, 255, 255, 0.045) 36px);
+    color: #e9ecf5;
+  }
+  .hero-num { font-weight: 300; letter-spacing: -0.035em; line-height: 1; font-size: clamp(2.4rem, 7.2vw, 5.6rem); font-variant-numeric: tabular-nums; }
+  .title { font-size: 1.65rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+  .subtitle { color: var(--s500); font-size: 0.875rem; max-width: 46rem; }
+}
+
+/* Cap tanggal (hanko): satu momen khas */
+.stamp-in { animation: stamp-in 0.62s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; transform-origin: center; }
+@keyframes stamp-in {
+  0% { opacity: 0; transform: scale(2.6) rotate(-22deg); }
+  58% { opacity: 1; transform: scale(0.93) rotate(-7deg); }
+  100% { opacity: 0.94; transform: scale(1) rotate(-8deg); }
+}
+.rise { animation: rise 0.28s ease-out both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.pop { animation: pop 0.16s ease-out both; }
+@keyframes pop { from { opacity: 0; transform: scale(0.97) translateY(-6px); } to { opacity: 1; transform: none; } }
+.grow-x { transform-origin: left center; animation: grow-x 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.grow-y { transform-origin: bottom center; animation: grow-y 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.pulse-ring { animation: pulse-ring 2.2s ease-out infinite; }
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--r500) 55%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }

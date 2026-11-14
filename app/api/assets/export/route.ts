@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const p = new URL(req.url).searchParams;
   const rows = await allAssets({ q: p.get("q") ?? undefined, gl: p.get("gl") ?? undefined, project: p.get("project") ?? undefined,
-    plant: p.get("plant") ?? undefined, check: p.get("check") ?? undefined, due: p.get("due") ?? undefined });
+    plant: p.get("plant") ?? undefined, check: p.get("check") ?? undefined, due: p.get("due") ?? undefined, dueon: p.get("dueon") ?? undefined });
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Inventory Asset");
   ws.columns = [

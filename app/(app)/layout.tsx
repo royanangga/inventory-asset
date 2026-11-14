@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import Nav from "../../components/Nav";
 import DueBanner from "../../components/DueBanner";
+import Topbar from "../../components/Topbar";
+import CommandPalette from "../../components/CommandPalette";
 import { sql } from "../../lib/db";
 import { dueAlerts, type DueAlerts } from "../../lib/queries";
 
@@ -16,7 +18,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
       <Nav alertCount={alerts.due} />
-      <main className="md:ml-60 px-4 md:px-8 py-6 md:py-8 max-w-[1500px]">
+      <CommandPalette />
+      <main className="md:ml-60 px-4 md:px-8 pb-28 max-w-[1500px]">
+        <Topbar />
         <DueBanner a={alerts} />
         {children}
       </main>

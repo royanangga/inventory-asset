@@ -14,6 +14,13 @@ Stack: Next.js 15 (App Router) · TypeScript · Tailwind v4 · PostgreSQL (`post
   **finalkan** (saldo sistem dikunci sebagai snapshot), buka kembali, ekspor ke Excel.
 - Login dengan satu password (`APP_PASSWORD`).
 
+## Tampilan & pintasan
+- **Tema terang/gelap** (tombol bulan/matahari, mengikuti pengaturan perangkat) dan **mode privasi** (nominal diburamkan, arahkan kursor untuk mengintip).
+- **Pencarian cepat** `Ctrl/⌘ + K`: cari aset langsung dari database, buka halaman, jalankan tampilan siap pakai (jatuh tempo, duplikat, tanpa GL, dst).
+- Pintasan: `/` fokus ke pencarian, `g` lalu `d` / `a` / `c` / `r` pindah ke Dashboard / Aset / Claim / Rekonsiliasi.
+- Dashboard: **Claim Radar** (jatuh tempo 45 hari, klik batang untuk membuka asetnya), peta pohon nilai per project, skor kesehatan data.
+- Rekonsiliasi: batang selisih per akun, cap tanggal **FINAL** saat difinalkan, penanda saat semua akun seimbang.
+
 ## Menjalankan lokal
 ```bash
 npm install
