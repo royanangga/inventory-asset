@@ -128,6 +128,7 @@ export async function parseWorkbook(input: ArrayBuffer | Buffer | string): Promi
       amount: num(c("R")),
       claim_to: str(c("S")) === "0" ? null : str(c("S")),
       due_date: null, // tidak ada di sheet; diisi lewat website
+      payment_status: "FINAL", // tidak ada di sheet; semua data impor dianggap FINAL, ubah lewat website
       claim,
       source_row: r,
     });

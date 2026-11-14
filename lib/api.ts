@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ASSET_NUM_FIELDS, ASSET_TEXT_FIELDS, CLAIM_NUM_FIELDS, CLAIM_TEXT_FIELDS } from "./types";
+import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, ASSET_NUM_FIELDS, ASSET_TEXT_FIELDS, CLAIM_NUM_FIELDS, CLAIM_TEXT_FIELDS } from "./types";
 import { parseNumber } from "./format";
 
 export const bad = (msg: string, status = 400) => NextResponse.json({ error: msg }, { status });
@@ -13,6 +13,7 @@ export function cleanAsset(body: any) {
   }
   for (const f of ["tgl", "due_date"]) if (out[f] && !/^\d{4}-\d{2}-\d{2}$/.test(out[f])) out[f] = null;
   for (const f of ASSET_NUM_FIELDS) out[f] = parseNumber(body?.[f]) ?? 0;
+  out.payment_status = isPaymentStatus(body?.payment_status) ? body.payment_status : DEFAULT_PAYMENT_STATUS;
   return out;
 }
 

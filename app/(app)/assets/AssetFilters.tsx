@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fmt, fmtIdr } from "../../../lib/format";
-import type { GlAccount } from "../../../lib/types";
+import { PAYMENT_STATUSES, type GlAccount } from "../../../lib/types";
 
 /** Filter Daftar Aset: otomatis diterapkan saat dipilih / diketik (tanpa tombol Terapkan) + ringkasan total otomatis. */
 export default function AssetFilters({ accounts, projects, plants, total, amount }: {
@@ -34,11 +34,11 @@ export default function AssetFilters({ accounts, projects, plants, total, amount
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => apply("q", v.trim()), 400);
   }
-  const hasFilter = ["q", "gl", "project", "plant", "check", "due", "dueon"].some((k) => sp.get(k));
+  const hasFilter = ["q", "gl", "project", "plant", "check", "due", "dueon", "pay"].some((k) => sp.get(k));
 
   return (
     <div className="card p-4 space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1.2fr_auto]">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1.2fr_auto]">
         <label><span className="label">Cari</span>
           <input data-search value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Vendor, PO, part number, nama barang…  ( tekan / )" className="input mt-1" /></label>
         <label><span className="label">Akun GL</span>
@@ -56,6 +56,12 @@ export default function AssetFilters({ accounts, projects, plants, total, amount
           <select value={sp.get("plant") ?? ""} onChange={(e) => apply("plant", e.target.value)} className="input mt-1">
             <option value="">Semua</option>
             {plants.map((p) => <option key={p}>{p}</option>)}
+          </select></label>
+        <label><span className="label">Pembayaran</span>
+          <select value={sp.get("pay") ?? ""} onChange={(e) => apply("pay", e.target.value)} className="input mt-1">
+            <option value="">Semua</option>
+            <option value="dp">Belum final (semua DP)</option>
+            {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select></label>
         <label><span className="label">Jatuh tempo</span>
           <select value={sp.get("due") ?? ""} onChange={(e) => apply("due", e.target.value)} className="input mt-1">

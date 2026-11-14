@@ -1,8 +1,9 @@
 import { sql } from "./db";
 import { DUE_SOON_DAYS } from "./format";
+import { isPaymentStatus } from "./types";
 import type { Asset, AssetRow, ClaimRow, GlAccount } from "./types";
 
-export type AssetFilters = { q?: string; gl?: string; project?: string; plant?: string; check?: string; due?: string; dueon?: string };
+export type AssetFilters = { q?: string; gl?: string; project?: string; plant?: string; check?: string; due?: string; dueon?: string; pay?: string };
 
 /** Hari ini menurut waktu Jakarta (agar alert jatuh tempo tidak bergeser karena zona waktu server). */
 const TODAY = () => sql`(now() at time zone 'Asia/Jakarta')::date`;
@@ -35,6 +36,8 @@ function where(f: AssetFilters) {
   }
   if (f.gl) parts.push(f.gl === "none" ? sql`gl_account is null` : sql`gl_account = ${f.gl}`);
   if (f.project) parts.push(sql`project = ${f.project}`);
+  if (f.pay === "dp") parts.push(sql`payment_status <> 'FINAL'`);
+  else if (f.pay && isPaymentStatus(f.pay)) parts.push(sql`payment_status = ${f.pay}`);
   if (f.plant) parts.push(sql`div_plant = ${f.plant}`);
   if (f.due === "due") parts.push(sql`due_date <= ${TODAY()} and not ${IS_CLAIMED()}`);
   if (f.due === "soon") parts.push(sql`due_date > ${TODAY()} and due_date <= ${TODAY()} + ${DUE_SOON_DAYS}::int and not ${IS_CLAIMED()}`);

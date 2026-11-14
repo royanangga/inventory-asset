@@ -7,12 +7,12 @@ import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
 import Seal from "../../../components/Seal";
 import ConfirmDialog, { type ConfirmProps } from "../../../components/ConfirmDialog";
 import { diffForm, listForm, type FieldDef } from "../../../lib/diff";
-import type { AssetRow, Claim, GlAccount } from "../../../lib/types";
+import { PAYMENT_STATUSES, type AssetRow, type Claim, type GlAccount } from "../../../lib/types";
 
 type Form = Record<string, string>;
 const EMPTY: Form = {
   gl_account: "", vendor: "", project: "", po_no: "", ringgisho_no: "", div_plant: "", tgl: "", trans_no: "", product_code: "", part_number: "",
-  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "", due_date: "",
+  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "", due_date: "", payment_status: "FINAL",
 };
 
 function toForm(a: AssetRow): Form {
@@ -30,6 +30,7 @@ const assetDefs = (accName: Record<string, string>): FieldDef[] => [
   { key: "qty", label: "Qty", kind: "num" }, { key: "ringgisho_lc", label: "Ringgisho PUR (LC)", kind: "num" },
   { key: "kesaisho_sales", label: "Kesaisho - Sales", kind: "num" }, { key: "amount", label: "Inventory Asset (Purchase)", kind: "num" },
   { key: "claim_to", label: "Customer MVD" }, { key: "due_date", label: "Tanggal jatuh tempo", kind: "date" },
+  { key: "payment_status", label: "Status pembayaran" },
 ];
 
 export default function AssetsClient({ rows, accounts, exportQs, totals }: { rows: AssetRow[]; accounts: GlAccount[]; exportQs: string; totals: { count: number; qty: number; amount: number } }) {
@@ -40,6 +41,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
   const [showImport, setShowImport] = useState(false);
   const [bulkGl, setBulkGl] = useState("");
   const [bulkDue, setBulkDue] = useState("");
+  const [bulkPay, setBulkPay] = useState("");
   const today = todayJakarta();
   const [msg, setMsg] = useState("");
   const [confirmBulk, setConfirmBulk] = useState<ConfirmProps | null>(null);
@@ -68,7 +70,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
     const res = await fetch("/api/assets/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [...sel], ...body }) });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) return j.error ?? "Gagal";
-    setConfirmBulk(null); setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); router.refresh();
+    setConfirmBulk(null); setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); setBulkPay(""); router.refresh();
   }
   const itemLabel = (r: AssetRow) => [r.vendor, r.item_name].filter(Boolean).join(" · ") || `Aset #${r.id}`;
   const askBulk = (kind: "update" | "delete", title: string, summary: string, detail: (r: AssetRow) => string, body: object, okMsg: (n: number) => string, note?: string) =>
@@ -105,6 +107,13 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
           <button className="btn-primary" disabled={!bulkDue}
             onClick={() => askBulk("update", `Atur jatuh tempo ${sel.size} aset`, `Tanggal jatuh tempo baru: ${fmtDate(bulkDue)}`,
               (r) => `${fmtDate(r.due_date)} → ${fmtDate(bulkDue)}`, { action: "due", due_date: bulkDue }, (n) => `Jatuh tempo ${n} aset diatur ke ${fmtDate(bulkDue)}`)}>Atur jatuh tempo</button>
+          <select value={bulkPay} onChange={(e) => setBulkPay(e.target.value)} className="input !w-auto" aria-label="Status pembayaran">
+            <option value="">Status pembayaran…</option>
+            {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button className="btn-primary" disabled={!bulkPay}
+            onClick={() => askBulk("update", `Ubah status pembayaran ${sel.size} aset`, `Status pembayaran baru: ${bulkPay}`,
+              (r) => `${r.payment_status} → ${bulkPay}`, { action: "payment", payment_status: bulkPay }, (n) => `Status pembayaran ${n} aset diubah ke ${bulkPay}`)}>Atur pembayaran</button>
           <button className="btn-danger"
             onClick={() => askBulk("delete", `Hapus ${sel.size} aset`, `Total nilai Rp ${fmt(selRows.reduce((t, r) => t + r.amount, 0))} akan dihapus dari daftar aset.`,
               (r) => `Rp ${fmt(r.amount)}`, { action: "delete" }, (n) => `${n} aset dihapus`, "Tindakan ini tidak bisa dibatalkan.")}>Hapus</button>
@@ -119,11 +128,11 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
               <th className="th w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Pilih semua" /></th>
               <th className="th">GL</th><th className="th">Vendor / Project</th><th className="th">PO / Tgl</th>
               <th className="th">Kode / Part</th><th className="th">Nama Barang</th>
-              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Jatuh tempo</th><th className="th">Claim</th>
+              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Pembayaran</th><th className="th">Jatuh tempo</th><th className="th">Claim</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && <tr><td colSpan={10} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={11} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
             {rows.map((r) => {
               const days = r.due_date ? daysUntil(r.due_date, today) : null;
               const isDue = !r.claimed && days !== null && days <= 0;
@@ -142,6 +151,9 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                 <td className="td min-w-[200px]">{r.item_name}{r.claim_to && <div className="mt-1"><span className="badge bg-slate-100 text-slate-700">{r.claim_to}</span></div>}</td>
                 <td className="td num">{fmt(r.qty)}</td>
                 <td className={`td num font-medium amt ${r.amount < 0 ? "text-red-600" : ""}`}>{fmt(r.amount)}</td>
+                <td className="td whitespace-nowrap">
+                  <span className={`badge ${r.payment_status === "FINAL" ? "bg-emerald-50 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>{r.payment_status}</span>
+                </td>
                 <td className="td whitespace-nowrap">
                   {days === null ? <span className="text-slate-400">-</span> : (
                     <>
@@ -171,20 +183,20 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                   <td className="td" colSpan={6}>Dipilih ({fmt(sel.size)} baris)</td>
                   <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.qty), 0))}</td>
                   <td className="td num amt">{fmt(selRows.reduce((t, r) => t + Number(r.amount), 0))}</td>
-                  <td className="td" colSpan={2} />
+                  <td className="td" colSpan={3} />
                 </tr>
               )}
               <tr>
                 <td className="td" colSpan={6}>Subtotal halaman ini ({fmt(rows.length)} baris)</td>
                 <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.qty), 0))}</td>
                 <td className="td num amt">{fmt(rows.reduce((t, r) => t + Number(r.amount), 0))}</td>
-                <td className="td" colSpan={2} />
+                <td className="td" colSpan={3} />
               </tr>
               <tr>
                 <td className="td" colSpan={6}>Total semua hasil filter ({fmt(totals.count)} item)</td>
                 <td className="td num">{fmt(totals.qty)}</td>
                 <td className="td num amt">{fmt(totals.amount)}</td>
-                <td className="td" colSpan={2} />
+                <td className="td" colSpan={3} />
               </tr>
             </tfoot>
           )}
@@ -264,6 +276,10 @@ function AssetModal({ edit, accounts, accName, onClose, onSaved }: { edit: { id:
           {T("kesaisho_sales", "Kesaisho - Sales", "number")}
           {T("amount", "Inventory Asset (Purchase)", "number", "sm:col-span-3")}
           {T("claim_to", "Customer MVD (Claim ADM / TBINA)", "text", "sm:col-span-2")}
+          <label><span className="label">Status pembayaran</span>
+            <select value={f.payment_status} onChange={set("payment_status")} className="input mt-1">
+              {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select></label>
           {T("due_date", "Tanggal jatuh tempo (saatnya di-claim)", "date")}
         </div>
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}

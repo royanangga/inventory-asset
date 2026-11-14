@@ -12,7 +12,7 @@ type SP = Promise<Record<string, string | undefined>>;
 export default async function AssetsPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const page = Math.max(Number(sp.page) || 1, 1);
-  const filters = { q: sp.q, gl: sp.gl, project: sp.project, plant: sp.plant, check: sp.check, due: sp.due, dueon: sp.dueon };
+  const filters = { q: sp.q, gl: sp.gl, project: sp.project, plant: sp.plant, check: sp.check, due: sp.due, dueon: sp.dueon, pay: sp.pay };
   const [{ rows, total, amount, qty }, accounts, vals] = await Promise.all([listAssets(filters, page, PAGE_SIZE), getAccounts(), distinctValues()]);
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
 

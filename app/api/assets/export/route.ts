@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const p = new URL(req.url).searchParams;
   const rows = await allAssets({ q: p.get("q") ?? undefined, gl: p.get("gl") ?? undefined, project: p.get("project") ?? undefined,
-    plant: p.get("plant") ?? undefined, check: p.get("check") ?? undefined, due: p.get("due") ?? undefined, dueon: p.get("dueon") ?? undefined });
+    plant: p.get("plant") ?? undefined, check: p.get("check") ?? undefined, due: p.get("due") ?? undefined, dueon: p.get("dueon") ?? undefined, pay: p.get("pay") ?? undefined });
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Inventory Asset");
   ws.columns = [
@@ -19,6 +19,7 @@ export async function GET(req: Request) {
     { header: "Qty", key: "qty", width: 7 }, { header: "Ringgisho PUR (LC)", key: "ringgisho_lc", width: 18 },
     { header: "Kesaisho - Sales", key: "kesaisho_sales", width: 18 }, { header: "Inventory Asset", key: "amount", width: 18 },
     { header: "Claim", key: "claim_to", width: 14 }, { header: "Jatuh Tempo", key: "due_date", width: 12 },
+    { header: "Status Pembayaran", key: "payment_status", width: 18 },
   ];
   for (const r of rows) ws.addRow(r);
   ws.getRow(1).font = { bold: true };

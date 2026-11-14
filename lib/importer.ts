@@ -6,7 +6,7 @@ type Sql = postgres.Sql<any>;
 // Detail inventory asset (kolom B-T) + tanggal jatuh tempo (diisi lewat website)
 const COLS = [
   "gl_account","trans_no","vendor","project","ringgisho_no","po_no","div_plant","tgl","product_code","part_number",
-  "item_name","qty","ringgisho_lc","kesaisho_sales","amount","claim_to","due_date","source_row",
+  "item_name","qty","ringgisho_lc","kesaisho_sales","amount","claim_to","due_date","payment_status","source_row",
 ] as const;
 
 // Claim ke customer (kolom W-AD + Remark/MVD)
@@ -33,13 +33,13 @@ export async function importParsed(sql: Sql, parsed: ParsedWorkbook, mode: "repl
     }
 
     // Simpan tanggal jatuh tempo & data claim yang diisi di website sebelum data lama diganti
-    const keep = new Map<string, { due_date: string | null; claim: any } | null>();
+    const keep = new Map<string, { due_date: string | null; payment_status: string | null; claim: any } | null>();
     if (mode === "replace") {
-      const old = await tx`select a.po_no, a.product_code, a.part_number, a.item_name, a.amount, a.due_date,
+      const old = await tx`select a.po_no, a.product_code, a.part_number, a.item_name, a.amount, a.due_date, a.payment_status,
         (select row_to_json(c) from asset_claims c where c.asset_id = a.id) as claim from assets a`;
       for (const o of old) {
         const k = keyOf(o);
-        keep.set(k, keep.has(k) ? null : { due_date: o.due_date ?? null, claim: o.claim ?? null }); // kunci ganda → abaikan
+        keep.set(k, keep.has(k) ? null : { due_date: o.due_date ?? null, payment_status: o.payment_status ?? null, claim: o.claim ?? null }); // kunci ganda → abaikan
       }
       await tx`delete from assets`; // claim ikut terhapus (ON DELETE CASCADE)
     }
@@ -48,11 +48,11 @@ export async function importParsed(sql: Sql, parsed: ParsedWorkbook, mode: "repl
     for (let i = 0; i < parsed.assets.length; i += 200) {
       const chunk = parsed.assets.slice(i, i + 200);
       const kept = chunk.map((a) => keep.get(keyOf(a)) ?? null);
-      const rows = chunk.map((a, k) => Object.fromEntries(COLS.map((c) => [c, c === "due_date" ? kept[k]?.due_date ?? null : (a as any)[c] ?? null])));
+      const rows = chunk.map((a, k) => Object.fromEntries(COLS.map((c) => [c, c === "due_date" ? kept[k]?.due_date ?? null : c === "payment_status" ? kept[k]?.payment_status ?? "FINAL" : (a as any)[c] ?? null])));
       const ids = await tx`insert into assets ${tx(rows, ...COLS)} returning id`;
       const claimRows = chunk.flatMap((a, k) => {
         const src = kept[k]?.claim ?? a.claim; // data claim dari website menang atas Excel
-        if (kept[k]?.claim || kept[k]?.due_date) preserved++;
+        if (kept[k]?.claim || kept[k]?.due_date || (kept[k]?.payment_status && kept[k]?.payment_status !== "FINAL")) preserved++;
         if (!src) return [];
         return [Object.fromEntries(CLAIM_COLS.map((c) => [c, c === "asset_id" ? ids[k].id : c === "claimed" ? !!src.claimed : (src as any)[c] ?? (CLAIM_NUMS.has(c) ? 0 : null)]))];
       });

@@ -20,8 +20,14 @@ export type Asset = {
   amount: number;
   claim_to: string | null;
   due_date: string | null;       // tanggal jatuh tempo: saatnya di-claim ke customer
+  payment_status: string;        // status pembayaran: salah satu PAYMENT_STATUSES
   source_row: number | null;
 };
+
+/** Urutan tahap pembayaran. Tambah "DP 6" dst. di sini bila perlu; "FINAL" harus tetap terakhir. */
+export const PAYMENT_STATUSES = ["DP 1", "DP 2", "DP 3", "DP 4", "DP 5", "FINAL"] as const;
+export const DEFAULT_PAYMENT_STATUS = "FINAL";
+export const isPaymentStatus = (v: unknown): v is string => typeof v === "string" && (PAYMENT_STATUSES as readonly string[]).includes(v);
 
 export type AssetInput = Omit<Asset, "id" | "source_row"> & { source_row?: number | null };
 

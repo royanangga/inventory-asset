@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS assets (
   amount          numeric(20,2) NOT NULL DEFAULT 0,  -- INVENTORY ASSET (PURCHASE)
   claim_to        text,            -- CUSTOMER MVD (Claim ADM / Claim TBINA)
   due_date        date,            -- tanggal jatuh tempo (saatnya aset di-claim ke customer)
+  payment_status  text NOT NULL DEFAULT 'FINAL',  -- status pembayaran: DP 1, DP 2, ... FINAL
   source_row      int,             -- nomor baris di Excel (untuk penelusuran)
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
@@ -35,6 +36,8 @@ CREATE INDEX IF NOT EXISTS assets_project_idx ON assets(project);
 -- database lama (sebelum kolom jatuh tempo ada)
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS due_date date;
 CREATE INDEX IF NOT EXISTS assets_due_idx ON assets(due_date);
+-- status pembayaran (DP bertahap); aset yang sudah ada otomatis berstatus FINAL
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'FINAL';
 
 -- Claim ke customer = kolom W-AD di sheet + Remark/MVD (maks. satu claim per aset). Tanggal jatuh tempo ada di tabel assets.
 CREATE TABLE IF NOT EXISTS asset_claims (
