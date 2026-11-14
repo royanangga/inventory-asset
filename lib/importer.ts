@@ -33,13 +33,14 @@ export async function importParsed(sql: Sql, parsed: ParsedWorkbook, mode: "repl
     }
 
     // Simpan tanggal jatuh tempo & data claim yang diisi di website sebelum data lama diganti
-    const keep = new Map<string, { due_date: string | null; payment_status: string | null; claim: any } | null>();
+    const keep = new Map<string, { due_date: string | null; payment_status: string | null; payments: any[]; claim: any } | null>();
     if (mode === "replace") {
       const old = await tx`select a.po_no, a.product_code, a.part_number, a.item_name, a.amount, a.due_date, a.payment_status,
+        (select coalesce(json_agg(p order by p.id), '[]'::json) from asset_payments p where p.asset_id = a.id) as payments,
         (select row_to_json(c) from asset_claims c where c.asset_id = a.id) as claim from assets a`;
       for (const o of old) {
         const k = keyOf(o);
-        keep.set(k, keep.has(k) ? null : { due_date: o.due_date ?? null, payment_status: o.payment_status ?? null, claim: o.claim ?? null }); // kunci ganda → abaikan
+        keep.set(k, keep.has(k) ? null : { due_date: o.due_date ?? null, payment_status: o.payment_status ?? null, payments: o.payments ?? [], claim: o.claim ?? null }); // kunci ganda → abaikan
       }
       await tx`delete from assets`; // claim ikut terhapus (ON DELETE CASCADE)
     }
@@ -50,6 +51,13 @@ export async function importParsed(sql: Sql, parsed: ParsedWorkbook, mode: "repl
       const kept = chunk.map((a) => keep.get(keyOf(a)) ?? null);
       const rows = chunk.map((a, k) => Object.fromEntries(COLS.map((c) => [c, c === "due_date" ? kept[k]?.due_date ?? null : c === "payment_status" ? kept[k]?.payment_status ?? "FINAL" : (a as any)[c] ?? null])));
       const ids = await tx`insert into assets ${tx(rows, ...COLS)} returning id`;
+      // Riwayat pembayaran: pakai yang sudah ada di website (bila baris cocok), selain itu satu pembayaran FINAL sebesar nilai Excel
+      const payRows = chunk.flatMap((a, k) => {
+        const old = kept[k]?.payments ?? [];
+        if (old.length) return old.map((p: any) => ({ asset_id: ids[k].id, stage: p.stage, amount: p.amount, pay_date: p.pay_date ?? null }));
+        return [{ asset_id: ids[k].id, stage: "FINAL", amount: (a as any).amount ?? 0, pay_date: null }];
+      });
+      if (payRows.length) await tx`insert into asset_payments ${tx(payRows, "asset_id", "stage", "amount", "pay_date")}`;
       const claimRows = chunk.flatMap((a, k) => {
         const src = kept[k]?.claim ?? a.claim; // data claim dari website menang atas Excel
         if (kept[k]?.claim || kept[k]?.due_date || (kept[k]?.payment_status && kept[k]?.payment_status !== "FINAL")) preserved++;

@@ -7,6 +7,8 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function PUT(req: Request, { params }: Ctx) {
   const { id } = await params;
   const a = cleanAsset(await req.json().catch(() => null));
+  // Nilai dan status pembayaran diturunkan dari riwayat pembayaran; tidak diubah lewat sini
+  delete a.amount; delete a.payment_status;
   const [row] = await sql`update assets set ${sql(a, ...Object.keys(a))}, updated_at = now() where id = ${Number(id)} returning *`;
   if (!row) return bad("Aset tidak ditemukan", 404);
   return NextResponse.json(row);

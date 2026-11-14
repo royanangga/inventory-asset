@@ -40,6 +40,25 @@ CREATE INDEX IF NOT EXISTS assets_due_idx ON assets(due_date);
 -- status pembayaran (DP bertahap); aset yang sudah ada otomatis berstatus FINAL
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'FINAL';
 
+-- Riwayat pembayaran per aset: DP 1, DP 2, ... FINAL. Inventory Asset (Purchase) = jumlah seluruh pembayaran.
+-- Aset yang sudah ada dibuatkan satu pembayaran sesuai status & nilainya sekarang (hanya saat tabel pertama kali dibuat).
+DO $$
+BEGIN
+  IF to_regclass('asset_payments') IS NULL THEN
+    CREATE TABLE asset_payments (
+      id          serial PRIMARY KEY,
+      asset_id    int NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+      stage       text NOT NULL,                      -- DP 1, DP 2, ..., FINAL
+      amount      numeric(20,2) NOT NULL DEFAULT 0,   -- nominal pembayaran tahap ini
+      pay_date    date,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (asset_id, stage)
+    );
+    INSERT INTO asset_payments (asset_id, stage, amount) SELECT id, payment_status, amount FROM assets;
+  END IF;
+END $$;
+
 -- Claim ke customer = kolom W-AD di sheet + Remark/MVD (maks. satu claim per aset). Tanggal jatuh tempo ada di tabel assets.
 CREATE TABLE IF NOT EXISTS asset_claims (
   id              serial PRIMARY KEY,

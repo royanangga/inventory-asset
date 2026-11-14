@@ -26,6 +26,11 @@ export type Asset = {
 
 /** Urutan tahap pembayaran. Tambah "DP 6" dst. di sini bila perlu; "FINAL" harus tetap terakhir. */
 export const PAYMENT_STATUSES = ["DP 1", "DP 2", "DP 3", "DP 4", "DP 5", "FINAL"] as const;
+export const stageIndex = (s: string) => (PAYMENT_STATUSES as readonly string[]).indexOf(s);
+/** Tahap terakhir (tertinggi) dari daftar pembayaran = status pembayaran aset. */
+export const latestStage = (stages: string[]) => stages.reduce((a, b) => (stageIndex(b) > stageIndex(a) ? b : a), stages[0] ?? "FINAL");
+export type AssetPayment = { id: number; asset_id: number; stage: string; amount: number; pay_date: string | null };
+
 export const DEFAULT_PAYMENT_STATUS = "FINAL";
 export const isPaymentStatus = (v: unknown): v is string => typeof v === "string" && (PAYMENT_STATUSES as readonly string[]).includes(v);
 

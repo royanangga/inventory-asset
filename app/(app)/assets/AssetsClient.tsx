@@ -1,18 +1,18 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "../../../components/Modal";
 import { DUE_SOON_DAYS, daysUntil, fmt, fmtDate, todayJakarta } from "../../../lib/format";
 import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
 import Seal from "../../../components/Seal";
-import ConfirmDialog, { type ConfirmProps } from "../../../components/ConfirmDialog";
+import ConfirmDialog, { type Change, type ConfirmProps } from "../../../components/ConfirmDialog";
 import { diffForm, listForm, type FieldDef } from "../../../lib/diff";
-import { PAYMENT_STATUSES, type AssetRow, type Claim, type GlAccount } from "../../../lib/types";
+import { PAYMENT_STATUSES, latestStage, stageIndex, type AssetPayment, type AssetRow, type Claim, type GlAccount } from "../../../lib/types";
 
 type Form = Record<string, string>;
 const EMPTY: Form = {
   gl_account: "", vendor: "", project: "", po_no: "", ringgisho_no: "", div_plant: "", tgl: "", trans_no: "", product_code: "", part_number: "",
-  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "", due_date: "", payment_status: "FINAL",
+  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "", due_date: "", payment_status: "FINAL", payment_amount: "", payment_date: "",
 };
 
 function toForm(a: AssetRow): Form {
@@ -28,9 +28,8 @@ const assetDefs = (accName: Record<string, string>): FieldDef[] => [
   { key: "po_no", label: "PO" }, { key: "ringgisho_no", label: "No. Ringgisho" }, { key: "trans_no", label: "Trans" },
   { key: "product_code", label: "Product Code" }, { key: "part_number", label: "Part Number" }, { key: "item_name", label: "Nama Barang" },
   { key: "qty", label: "Qty", kind: "num" }, { key: "ringgisho_lc", label: "Ringgisho PUR (LC)", kind: "num" },
-  { key: "kesaisho_sales", label: "Kesaisho - Sales", kind: "num" }, { key: "amount", label: "Inventory Asset (Purchase)", kind: "num" },
+  { key: "kesaisho_sales", label: "Kesaisho - Sales", kind: "num" },
   { key: "claim_to", label: "Customer MVD" }, { key: "due_date", label: "Tanggal jatuh tempo", kind: "date" },
-  { key: "payment_status", label: "Status pembayaran" },
 ];
 
 export default function AssetsClient({ rows, accounts, exportQs, totals }: { rows: AssetRow[]; accounts: GlAccount[]; exportQs: string; totals: { count: number; qty: number; amount: number } }) {
@@ -41,7 +40,6 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
   const [showImport, setShowImport] = useState(false);
   const [bulkGl, setBulkGl] = useState("");
   const [bulkDue, setBulkDue] = useState("");
-  const [bulkPay, setBulkPay] = useState("");
   const today = todayJakarta();
   const [msg, setMsg] = useState("");
   const [confirmBulk, setConfirmBulk] = useState<ConfirmProps | null>(null);
@@ -70,7 +68,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
     const res = await fetch("/api/assets/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [...sel], ...body }) });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) return j.error ?? "Gagal";
-    setConfirmBulk(null); setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); setBulkPay(""); router.refresh();
+    setConfirmBulk(null); setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); router.refresh();
   }
   const itemLabel = (r: AssetRow) => [r.vendor, r.item_name].filter(Boolean).join(" · ") || `Aset #${r.id}`;
   const askBulk = (kind: "update" | "delete", title: string, summary: string, detail: (r: AssetRow) => string, body: object, okMsg: (n: number) => string, note?: string) =>
@@ -107,13 +105,6 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
           <button className="btn-primary" disabled={!bulkDue}
             onClick={() => askBulk("update", `Atur jatuh tempo ${sel.size} aset`, `Tanggal jatuh tempo baru: ${fmtDate(bulkDue)}`,
               (r) => `${fmtDate(r.due_date)} → ${fmtDate(bulkDue)}`, { action: "due", due_date: bulkDue }, (n) => `Jatuh tempo ${n} aset diatur ke ${fmtDate(bulkDue)}`)}>Atur jatuh tempo</button>
-          <select value={bulkPay} onChange={(e) => setBulkPay(e.target.value)} className="input !w-auto" aria-label="Status pembayaran">
-            <option value="">Status pembayaran…</option>
-            {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button className="btn-primary" disabled={!bulkPay}
-            onClick={() => askBulk("update", `Ubah status pembayaran ${sel.size} aset`, `Status pembayaran baru: ${bulkPay}`,
-              (r) => `${r.payment_status} → ${bulkPay}`, { action: "payment", payment_status: bulkPay }, (n) => `Status pembayaran ${n} aset diubah ke ${bulkPay}`)}>Atur pembayaran</button>
           <button className="btn-danger"
             onClick={() => askBulk("delete", `Hapus ${sel.size} aset`, `Total nilai Rp ${fmt(selRows.reduce((t, r) => t + r.amount, 0))} akan dihapus dari daftar aset.`,
               (r) => `Rp ${fmt(r.amount)}`, { action: "delete" }, (n) => `${n} aset dihapus`, "Tindakan ini tidak bisa dibatalkan.")}>Hapus</button>
@@ -204,20 +195,21 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
       </div>
 
       {confirmBulk && <ConfirmDialog {...confirmBulk} />}
-      {edit && <AssetModal edit={edit} accounts={accounts} accName={accName} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); router.refresh(); }} />}
+      {edit && <AssetModal edit={edit} accounts={accounts} accName={accName} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); router.refresh(); }} onRefresh={() => router.refresh()} />}
       {claim && <ClaimModal target={claim} onClose={() => setClaim(null)} onSaved={() => { setClaim(null); router.refresh(); }} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onDone={() => { setShowImport(false); router.refresh(); }} />}
     </>
   );
 }
 
-function AssetModal({ edit, accounts, accName, onClose, onSaved }: { edit: { id: number | null; form: Form }; accounts: GlAccount[]; accName: Record<string, string>; onClose: () => void; onSaved: () => void }) {
+function AssetModal({ edit, accounts, accName, onClose, onSaved, onRefresh }: { edit: { id: number | null; form: Form }; accounts: GlAccount[]; accName: Record<string, string>; onClose: () => void; onSaved: () => void; onRefresh: () => void }) {
   const [f, setF] = useState<Form>(edit.form);
   const [err, setErr] = useState("");
   const [confirmAsk, setConfirmAsk] = useState<ConfirmProps | null>(null);
   const defs = useMemo(() => assetDefs(accName), [accName]);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   const title = [edit.form.vendor, edit.form.item_name].filter(Boolean).join(" · ");
+  const [paid, setPaid] = useState<{ amount: number; status: string }>({ amount: Number(edit.form.amount) || 0, status: edit.form.payment_status });
 
   /** Form disubmit → tampilkan konfirmasi berisi rincian perubahan, baru simpan. */
   function save(e: React.FormEvent) {
@@ -232,14 +224,22 @@ function AssetModal({ edit, accounts, accName, onClose, onSaved }: { edit: { id:
       if (changes.length === 0) { setErr("Belum ada data yang diubah."); return; }
       setConfirmAsk({ kind: "update", title: "Simpan perubahan aset?", summary: `${changes.length} data akan diubah${title ? ` pada ${title}` : ""}.`, changes, onConfirm: run, onCancel: () => setConfirmAsk(null) });
     } else {
-      setConfirmAsk({ kind: "create", title: "Tambah aset baru?", summary: "Aset baru akan dicatat dengan data berikut.", changes: listForm(defs, f, "after"), onConfirm: run, onCancel: () => setConfirmAsk(null) });
+      const nominal = Number(f.payment_amount);
+      if (f.payment_amount.trim() === "" || !Number.isFinite(nominal)) { setErr(`Isi nominal ${f.payment_status}.`); return; }
+      const changes = [
+        ...listForm(defs, f, "after"),
+        { label: "Status pembayaran", after: f.payment_status },
+        { label: `Nominal ${f.payment_status}`, after: `Rp ${fmt(nominal)}${f.payment_date ? " · " + fmtDate(f.payment_date) : ""}` },
+        { label: "Inventory Asset (Purchase)", after: `Rp ${fmt(nominal)}` },
+      ];
+      setConfirmAsk({ kind: "create", title: "Tambah aset baru?", summary: `Nominal ${f.payment_status} otomatis menjadi Inventory Asset (Purchase).`, changes, onConfirm: run, onCancel: () => setConfirmAsk(null) });
     }
   }
   function del() {
     if (!edit.id) return;
     setConfirmAsk({
-      kind: "delete", title: "Hapus aset ini?", summary: title || `Aset #${edit.id}`, changes: listForm(defs, edit.form, "before"),
-      note: "Tindakan ini tidak bisa dibatalkan.",
+      kind: "delete", title: "Hapus aset ini?", summary: title || `Aset #${edit.id}`, changes: [...listForm(defs, edit.form, "before"), { label: "Status pembayaran", before: paid.status }, { label: "Inventory Asset (Purchase)", before: `Rp ${fmt(paid.amount)}` }],
+      note: "Aset beserta seluruh riwayat pembayarannya akan dihapus. Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
         const res = await fetch(`/api/assets/${edit.id}`, { method: "DELETE" });
         if (res.ok) return onSaved();
@@ -274,14 +274,26 @@ function AssetModal({ edit, accounts, accName, onClose, onSaved }: { edit: { id:
           {T("qty", "Qty", "number")}
           {T("ringgisho_lc", "Ringgisho PUR (LC)", "number")}
           {T("kesaisho_sales", "Kesaisho - Sales", "number")}
-          {T("amount", "Inventory Asset (Purchase)", "number", "sm:col-span-3")}
           {T("claim_to", "Customer MVD (Claim ADM / TBINA)", "text", "sm:col-span-2")}
-          <label><span className="label">Status pembayaran</span>
-            <select value={f.payment_status} onChange={set("payment_status")} className="input mt-1">
-              {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select></label>
           {T("due_date", "Tanggal jatuh tempo (saatnya di-claim)", "date")}
         </div>
+
+        {edit.id ? (
+          <PaymentsPanel assetId={edit.id} ask={setConfirmAsk} onChanged={(a) => { setPaid(a); onRefresh(); }} />
+        ) : (
+          <fieldset className="rounded-lg border border-slate-200 p-4 space-y-3">
+            <legend className="px-1 text-sm font-semibold">Pembayaran</legend>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <label><span className="label">Status pembayaran</span>
+                <select value={f.payment_status} onChange={set("payment_status")} className="input mt-1">
+                  {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select></label>
+              {T("payment_amount", `Nominal ${f.payment_status}`, "number")}
+              {T("payment_date", "Tanggal bayar (opsional)", "date")}
+            </div>
+            <p className="text-xs text-slate-500">Nominal ini otomatis menjadi <b>Inventory Asset (Purchase)</b>. Bila memilih DP, tahap berikutnya (DP 2, dst. sampai FINAL) bisa ditambahkan setelah aset disimpan, dan nominalnya dijumlahkan otomatis.</p>
+          </fieldset>
+        )}
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
         <div className="flex justify-between pt-1">
           <div>{edit.id && <button type="button" className="btn-danger" onClick={del}>Hapus</button>}</div>
@@ -290,6 +302,145 @@ function AssetModal({ edit, accounts, accName, onClose, onSaved }: { edit: { id:
       </form>
       {confirmAsk && <ConfirmDialog {...confirmAsk} />}
     </Modal>
+  );
+}
+
+const rp = (n: number) => `Rp ${fmt(n)}`;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const stageBadge = (s: string) => `badge ${s === "FINAL" ? "bg-emerald-50 text-emerald-700" : "bg-amber-100 text-amber-800"}`;
+
+/** Riwayat pembayaran aset (DP 1, DP 2, … FINAL). Total semua nominal = Inventory Asset (Purchase). */
+function PaymentsPanel({ assetId, ask, onChanged }: { assetId: number; ask: (c: ConfirmProps | null) => void; onChanged: (a: { amount: number; status: string }) => void }) {
+  const [pays, setPays] = useState<AssetPayment[] | null>(null);
+  const [form, setForm] = useState<{ id: number | null; stage: string; amount: string; pay_date: string } | null>(null);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/assets/${assetId}/payments`);
+    if (r.ok) setPays(await r.json()); else setErr("Gagal memuat pembayaran");
+  }, [assetId]);
+  useEffect(() => { load(); }, [load]);
+
+  const list = pays ?? [];
+  const total = round2(list.reduce((t, p) => t + Number(p.amount), 0));
+  const status = latestStage(list.map((p) => p.stage));
+  const hasFinal = list.some((p) => p.stage === "FINAL");
+  const used = new Set(list.map((p) => p.stage));
+  const nextStage = PAYMENT_STATUSES.find((s) => !used.has(s) && stageIndex(s) > stageIndex(status)) ?? PAYMENT_STATUSES.find((s) => !used.has(s)) ?? "FINAL";
+
+  const after = async (res: Response, fail: string): Promise<string | void> => {
+    if (!res.ok) return (await res.json().catch(() => ({}))).error ?? fail;
+    const a = await res.json();
+    setForm(null); ask(null); await load();
+    onChanged({ amount: Number(a.amount), status: a.payment_status });
+  };
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault(); setErr("");
+    if (!form) return;
+    const amt = Number(form.amount);
+    if (form.amount.trim() === "" || !Number.isFinite(amt)) { setErr(`Isi nominal ${form.stage}.`); return; }
+    const body = JSON.stringify({ stage: form.stage, amount: amt, pay_date: form.pay_date });
+    const headers = { "Content-Type": "application/json" };
+    if (form.id === null) {
+      const newStatus = latestStage([...list.map((p) => p.stage), form.stage]);
+      ask({
+        kind: "create", title: `Tambah pembayaran ${form.stage}?`, summary: "Nominal ini otomatis ditambahkan ke Inventory Asset (Purchase).",
+        changes: [
+          { label: "Pembayaran baru", after: `${form.stage} · ${rp(amt)}${form.pay_date ? " · " + fmtDate(form.pay_date) : ""}` },
+          { label: "Inventory Asset (Purchase)", before: rp(total), after: rp(round2(total + amt)) },
+          { label: "Status pembayaran", before: status, after: newStatus },
+        ],
+        onConfirm: async () => after(await fetch(`/api/assets/${assetId}/payments`, { method: "POST", headers, body }), "Gagal menambah pembayaran"),
+        onCancel: () => ask(null),
+      });
+    } else {
+      const old = list.find((p) => p.id === form.id)!;
+      const newTotal = round2(total - Number(old.amount) + amt);
+      const newStatus = latestStage(list.map((p) => (p.id === old.id ? form.stage : p.stage)));
+      const changes: Change[] = [];
+      if (old.stage !== form.stage) changes.push({ label: "Tahap", before: old.stage, after: form.stage });
+      if (Number(old.amount) !== amt) changes.push({ label: `Nominal ${form.stage}`, before: rp(Number(old.amount)), after: rp(amt) });
+      if ((old.pay_date ?? "") !== form.pay_date) changes.push({ label: "Tanggal bayar", before: old.pay_date ? fmtDate(old.pay_date) : "", after: form.pay_date ? fmtDate(form.pay_date) : "" });
+      if (!changes.length) { setErr("Belum ada data yang diubah."); return; }
+      if (newTotal !== total) changes.push({ label: "Inventory Asset (Purchase)", before: rp(total), after: rp(newTotal) });
+      if (newStatus !== status) changes.push({ label: "Status pembayaran", before: status, after: newStatus });
+      ask({
+        kind: "update", title: `Simpan perubahan pembayaran ${old.stage}?`, changes,
+        onConfirm: async () => after(await fetch(`/api/assets/${assetId}/payments/${old.id}`, { method: "PUT", headers, body }), "Gagal menyimpan pembayaran"),
+        onCancel: () => ask(null),
+      });
+    }
+  }
+
+  function remove(p: AssetPayment) {
+    const rest = list.filter((x) => x.id !== p.id);
+    ask({
+      kind: "delete", title: `Hapus pembayaran ${p.stage}?`, summary: "Nominalnya akan dikurangkan dari Inventory Asset (Purchase).",
+      changes: [
+        { label: "Pembayaran dihapus", before: `${p.stage} · ${rp(Number(p.amount))}` },
+        { label: "Inventory Asset (Purchase)", before: rp(total), after: rp(round2(total - Number(p.amount))) },
+        { label: "Status pembayaran", before: status, after: latestStage(rest.map((x) => x.stage)) },
+      ],
+      onConfirm: async () => after(await fetch(`/api/assets/${assetId}/payments/${p.id}`, { method: "DELETE" }), "Gagal menghapus pembayaran"),
+      onCancel: () => ask(null),
+    });
+  }
+
+  const stageOptions = (current: string | null) => PAYMENT_STATUSES.filter((s) => s === current || !used.has(s));
+
+  return (
+    <section className="rounded-lg border border-slate-200 p-4 space-y-3" aria-label="Pembayaran">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Pembayaran <span className={`${stageBadge(status)} ml-1`}>{status}</span></h3>
+        <div className="text-sm">Inventory Asset (Purchase): <b className="tabular-nums amt">{rp(total)}</b></div>
+      </div>
+
+      {pays === null ? <p className="text-sm text-slate-500">Memuat…</p> : (
+        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+          {list.map((p) => (
+            <li key={p.id} className="flex items-center gap-3 px-3 py-2">
+              <span className={stageBadge(p.stage)}>{p.stage}</span>
+              <span className="tabular-nums font-medium amt">{rp(Number(p.amount))}</span>
+              <span className="text-xs text-slate-500">{p.pay_date ? fmtDate(p.pay_date) : ""}</span>
+              <span className="ml-auto flex gap-3">
+                <button type="button" className="link !text-xs" onClick={() => { setErr(""); setForm({ id: p.id, stage: p.stage, amount: String(p.amount), pay_date: p.pay_date ?? "" }); }}>Ubah</button>
+                {list.length > 1 && <button type="button" className="text-xs text-red-600 hover:underline cursor-pointer" onClick={() => remove(p)}>Hapus</button>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {form ? (
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(e as any); } }}>
+          <div className="text-sm font-medium">{form.id === null ? "Tambah pembayaran" : `Ubah pembayaran ${list.find((p) => p.id === form.id)?.stage}`}</div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <label><span className="label">Tahap</span>
+              <select className="input mt-1" value={form.stage} onChange={(e) => setForm({ ...form, stage: e.target.value })}>
+                {stageOptions(form.id === null ? null : list.find((p) => p.id === form.id)?.stage ?? null).map((s) => <option key={s} value={s}>{s}</option>)}
+              </select></label>
+            <label><span className="label">Nominal {form.stage}</span>
+              <input type="number" step="any" className="input mt-1" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} autoFocus /></label>
+            <label><span className="label">Tanggal bayar (opsional)</span>
+              <input type="date" className="input mt-1" value={form.pay_date} onChange={(e) => setForm({ ...form, pay_date: e.target.value })} /></label>
+          </div>
+          {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn" onClick={() => { setForm(null); setErr(""); }}>Batal</button>
+            <button type="button" className="btn-primary" onClick={submit as any}>Lanjut</button>
+          </div>
+        </div>
+      ) : hasFinal ? (
+        <p className="text-xs text-slate-500">Pembayaran sudah FINAL, tidak ada tahap berikutnya.</p>
+      ) : (
+        <div>
+          <button type="button" className="btn !py-1 !px-2.5 text-xs" disabled={pays === null} onClick={() => { setErr(""); setForm({ id: null, stage: nextStage, amount: "", pay_date: "" }); }}>+ Tambah pembayaran ({nextStage})</button>
+          <p className="text-xs text-slate-500 mt-2">Nominal tahap baru otomatis ditambahkan ke Inventory Asset (Purchase).</p>
+        </div>
+      )}
+      {!form && err && <p className="text-sm text-red-600" role="alert">{err}</p>}
+    </section>
   );
 }
 
