@@ -2,14 +2,14 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "../../../components/Modal";
-import { fmt, fmtDate } from "../../../lib/format";
+import { DUE_SOON_DAYS, daysUntil, fmt, fmtDate, todayJakarta } from "../../../lib/format";
 import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
 import type { AssetRow, Claim, GlAccount } from "../../../lib/types";
 
 type Form = Record<string, string>;
 const EMPTY: Form = {
   gl_account: "", vendor: "", project: "", po_no: "", ringgisho_no: "", div_plant: "", tgl: "", trans_no: "", product_code: "", part_number: "",
-  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "",
+  item_name: "", qty: "1", ringgisho_lc: "0", kesaisho_sales: "0", amount: "0", claim_to: "", due_date: "",
 };
 
 function toForm(a: AssetRow): Form {
@@ -25,6 +25,8 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
   const [claim, setClaim] = useState<ClaimTarget | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [bulkGl, setBulkGl] = useState("");
+  const [bulkDue, setBulkDue] = useState("");
+  const today = todayJakarta();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const accName = useMemo(() => Object.fromEntries(accounts.map((a) => [a.code, a.name])), [accounts]);
@@ -40,7 +42,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
       const res = await fetch(`/api/claims/${r.claim_id}`);
       if (res.ok) existing = await res.json();
     }
-    setClaim({ assetId: r.id, title: [r.vendor, r.item_name].filter(Boolean).join(" · "), amount: r.amount, claimTo: r.claim_to, claim: existing });
+    setClaim({ assetId: r.id, title: [r.vendor, r.item_name].filter(Boolean).join(" · "), amount: r.amount, claimTo: r.claim_to, dueDate: r.due_date, claim: existing });
   }
 
   async function bulk(body: object, okMsg: (n: number) => string) {
@@ -49,7 +51,7 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
     const j = await res.json();
     setBusy(false);
     if (!res.ok) { setMsg(j.error ?? "Gagal"); return; }
-    setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); router.refresh();
+    setMsg(okMsg(j.affected)); setSel(new Set()); setBulkGl(""); setBulkDue(""); router.refresh();
   }
 
   return (
@@ -70,6 +72,9 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
           </select>
           <button className="btn-primary" disabled={!bulkGl || busy}
             onClick={() => confirm(`Pindahkan ${sel.size} aset ke akun ${bulkGl}?`) && bulk({ gl_account: bulkGl }, (n) => `${n} aset dipindahkan ke ${bulkGl}`)}>Terapkan</button>
+          <input type="date" value={bulkDue} onChange={(e) => setBulkDue(e.target.value)} className="input !w-auto" aria-label="Tanggal jatuh tempo" />
+          <button className="btn-primary" disabled={!bulkDue || busy}
+            onClick={() => bulk({ action: "due", due_date: bulkDue }, (n) => `Jatuh tempo ${n} aset diatur ke ${fmtDate(bulkDue)}`)}>Atur jatuh tempo</button>
           <button className="btn-danger" disabled={busy}
             onClick={() => confirm(`Hapus ${sel.size} aset? Tindakan ini tidak bisa dibatalkan.`) && bulk({ action: "delete" }, (n) => `${n} aset dihapus`)}>Hapus</button>
           <button className="btn" onClick={() => setSel(new Set())}>Batal pilih</button>
@@ -83,13 +88,17 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
               <th className="th w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Pilih semua" /></th>
               <th className="th">GL</th><th className="th">Vendor / Project</th><th className="th">PO / Tgl</th>
               <th className="th">Kode / Part</th><th className="th">Nama Barang</th>
-              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Claim</th><th className="th" />
+              <th className="th text-right">Qty</th><th className="th text-right">Inventory Asset</th><th className="th">Jatuh tempo</th><th className="th">Claim</th><th className="th" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 && <tr><td colSpan={10} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
-            {rows.map((r) => (
-              <tr key={r.id} className={sel.has(r.id) ? "bg-brand-50/50" : "hover:bg-slate-50/70"}>
+            {rows.length === 0 && <tr><td colSpan={11} className="td text-center text-slate-500 py-10">Tidak ada data yang cocok.</td></tr>}
+            {rows.map((r) => {
+              const days = r.due_date ? daysUntil(r.due_date, today) : null;
+              const isDue = !r.claimed && days !== null && days <= 0;
+              const isSoon = !r.claimed && days !== null && days > 0 && days <= DUE_SOON_DAYS;
+              return (
+              <tr key={r.id} className={sel.has(r.id) ? "bg-brand-50/50" : isDue ? "bg-red-50/60 hover:bg-red-50" : "hover:bg-slate-50/70"}>
                 <td className="td"><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Pilih aset ${r.id}`} /></td>
                 <td className="td whitespace-nowrap" title={r.gl_account ? accName[r.gl_account] : ""}>
                   {r.gl_account ?? <span className="badge bg-red-50 text-red-700">kosong</span>}</td>
@@ -100,15 +109,27 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                 <td className="td num">{fmt(r.qty)}</td>
                 <td className={`td num font-medium ${r.amount < 0 ? "text-red-600" : ""}`}>{fmt(r.amount)}</td>
                 <td className="td whitespace-nowrap">
+                  {days === null ? <span className="text-slate-400">-</span> : (
+                    <>
+                      <div className={r.claimed ? "text-slate-500" : isDue ? "font-medium text-red-700" : ""}>{fmtDate(r.due_date)}</div>
+                      {isDue && <span className="badge bg-red-100 text-red-700">{days < 0 ? `Lewat ${-days} hari` : "Jatuh tempo hari ini"}</span>}
+                      {isSoon && <span className="badge bg-amber-100 text-amber-800">{days} hari lagi</span>}
+                    </>
+                  )}
+                </td>
+                <td className="td whitespace-nowrap">
                   {r.claimed
-                    ? <button className="badge bg-emerald-50 text-emerald-700 cursor-pointer hover:bg-emerald-100" onClick={() => openClaim(r)} title="Lihat / ubah claim">Diclaim{r.claim_due_date ? ` · jt ${fmtDate(r.claim_due_date)}` : ""}</button>
+                    ? <button className="badge bg-emerald-50 text-emerald-700 cursor-pointer hover:bg-emerald-100" onClick={() => openClaim(r)} title="Lihat / ubah claim">Diclaim</button>
+                    : isDue
+                      ? <button className="btn-danger !py-1 !px-2.5 text-xs" onClick={() => openClaim(r)}>Claim sekarang</button>
                     : r.claim_id
                       ? <button className="badge bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200" onClick={() => openClaim(r)} title="Ada catatan Remark/MVD, belum diclaim">Catatan</button>
                       : <button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => openClaim(r)}>Claim</button>}
                 </td>
                 <td className="td"><button className="text-brand-600 text-sm hover:underline cursor-pointer" onClick={() => setEdit({ id: r.id, form: toForm(r) })}>Ubah</button></td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           {rows.length > 0 && (
             <tfoot className="bg-slate-50 font-semibold border-t-2 border-slate-200">
@@ -117,20 +138,20 @@ export default function AssetsClient({ rows, accounts, exportQs, totals }: { row
                   <td className="td" colSpan={6}>Dipilih ({fmt(sel.size)} baris)</td>
                   <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.qty), 0))}</td>
                   <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.amount), 0))}</td>
-                  <td className="td" colSpan={2} />
+                  <td className="td" colSpan={3} />
                 </tr>
               )}
               <tr>
                 <td className="td" colSpan={6}>Subtotal halaman ini ({fmt(rows.length)} baris)</td>
                 <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.qty), 0))}</td>
                 <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.amount), 0))}</td>
-                <td className="td" colSpan={2} />
+                <td className="td" colSpan={3} />
               </tr>
               <tr>
                 <td className="td" colSpan={6}>Total semua hasil filter ({fmt(totals.count)} item)</td>
                 <td className="td num">{fmt(totals.qty)}</td>
                 <td className="td num">{fmt(totals.amount)}</td>
-                <td className="td" colSpan={2} />
+                <td className="td" colSpan={3} />
               </tr>
             </tfoot>
           )}
@@ -190,7 +211,8 @@ function AssetModal({ edit, accounts, onClose, onSaved }: { edit: { id: number |
           {T("ringgisho_lc", "Ringgisho PUR (LC)", "number")}
           {T("kesaisho_sales", "Kesaisho - Sales", "number")}
           {T("amount", "Inventory Asset (Purchase)", "number", "sm:col-span-3")}
-          {T("claim_to", "Customer MVD (Claim ADM / TBINA)", "text", "sm:col-span-3")}
+          {T("claim_to", "Customer MVD (Claim ADM / TBINA)", "text", "sm:col-span-2")}
+          {T("due_date", "Tanggal jatuh tempo (saatnya di-claim)", "date")}
         </div>
         {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
         <div className="flex justify-between pt-1">

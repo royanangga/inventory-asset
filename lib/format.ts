@@ -1,6 +1,12 @@
 const idr = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 export const fmt = (n: number | null | undefined) => (n === null || n === undefined ? "-" : idr.format(n));
 export const fmtIdr = (n: number | null | undefined) => (n === null || n === undefined ? "-" : "Rp " + idr.format(n));
+/** Tanggal hari ini (YYYY-MM-DD) menurut waktu Jakarta */
+export const todayJakarta = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+/** Selisih hari dari hari ini ke tanggal jatuh tempo (negatif = sudah lewat) */
+export const daysUntil = (due: string, today = todayJakarta()) => Math.round((Date.parse(due.slice(0, 10)) - Date.parse(today)) / 86400000);
+export const DUE_SOON_DAYS = 7;
+
 export function fmtDate(d: string | null | undefined) {
   if (!d) return "-";
   const [y, m, day] = d.slice(0, 10).split("-");

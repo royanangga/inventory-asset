@@ -36,9 +36,14 @@ Tanpa `APP_PASSWORD` di mode development, login dimatikan. Di production login *
 
 ## Alur pencatatan
 1. Aset yang sudah dibeli dicatat di **Daftar Aset** (detail inventory = kolom B–T). Hanya kolom *Inventory Asset* yang masuk saldo & rekonsiliasi TB.
-2. Setelah ada **tanggal jatuh tempo**, klik **Claim** pada aset → isi data claim (W–AD, Remark, MVD). Aset tampil di menu **Claim Customer**.
-3. Aset dianggap *Diclaim* bila punya tanggal jatuh tempo atau data W–AD. Aset yang hanya punya Remark/MVD dari Excel berstatus *Catatan*
-   (terlihat di Claim Customer → filter “Hanya catatan”). Membatalkan claim tidak menghapus aset.
+2. Isi **Tanggal jatuh tempo** pada aset (satu per satu lewat *Ubah*, atau banyak sekaligus: centang baris → *Atur jatuh tempo*).
+3. **Alert**: aset yang belum diclaim dan tanggalnya sudah tiba/lewat muncul sebagai banner merah di semua halaman, badge merah di menu
+   *Daftar Aset*, baris merah + tombol **Claim sekarang**. Aset yang jatuh tempo ≤ 7 hari muncul sebagai banner kuning.
+   Filter *Jatuh tempo* di Daftar Aset: Saatnya di-claim / Dalam 7 hari / Belum ada tanggal / Sudah diclaim.
+4. Klik **Claim** → isi data claim (W–AD, Remark, MVD) dan centang *Sudah di-claim ke customer*. Aset tampil di menu **Claim Customer**
+   dan alert-nya hilang. Aset yang hanya punya Remark/MVD dari Excel berstatus *Catatan* (belum diclaim).
+5. Impor Excel mode *Ganti semua data*: tanggal jatuh tempo dan data claim yang diisi di website dipertahankan untuk aset yang cocok
+   (PO + kode/part/nama + nilai yang sama).
 
 Update database lama: **otomatis** — setiap deploy/start, aplikasi menjalankan migrasi skema sendiri (`instrumentation.ts`), tidak perlu membuka /setup. Kolom Remark/MVD/Expense/FA di tabel `assets`
 otomatis dipindahkan ke tabel `asset_claims` lalu dihapus dari `assets`.

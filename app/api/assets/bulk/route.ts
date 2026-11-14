@@ -3,11 +3,16 @@ import { sql } from "../../../../lib/db";
 import { bad } from "../../../../lib/api";
 
 export async function POST(req: Request) {
-  const { ids, gl_account, action } = await req.json().catch(() => ({}));
+  const { ids, gl_account, action, due_date } = await req.json().catch(() => ({}));
   if (!Array.isArray(ids) || !ids.length) return bad("Pilih minimal satu aset");
   const list = ids.map(Number).filter(Number.isFinite);
   if (action === "delete") {
     const r = await sql`delete from assets where id in ${sql(list)} returning id`;
+    return NextResponse.json({ affected: r.length });
+  }
+  if (action === "due") {
+    if (due_date !== null && due_date !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(String(due_date))) return bad("Tanggal tidak valid");
+    const r = await sql`update assets set due_date = ${due_date || null}, updated_at = now() where id in ${sql(list)} returning id`;
     return NextResponse.json({ affected: r.length });
   }
   const [acc] = gl_account ? await sql`select code from gl_accounts where code = ${gl_account}` : [null];

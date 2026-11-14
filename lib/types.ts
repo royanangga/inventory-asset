@@ -19,13 +19,14 @@ export type Asset = {
   kesaisho_sales: number;
   amount: number;
   claim_to: string | null;
+  due_date: string | null;       // tanggal jatuh tempo: saatnya di-claim ke customer
   source_row: number | null;
 };
 
 export type AssetInput = Omit<Asset, "id" | "source_row"> & { source_row?: number | null };
 
 /** Baris daftar aset + status claim (untuk tabel Daftar Aset). */
-export type AssetRow = Asset & { claim_id: number | null; claim_due_date: string | null; claimed: boolean };
+export type AssetRow = Asset & { claim_id: number | null; claimed: boolean };
 
 /**
  * Keterangan claim ke customer (kolom W-AD di sheet) + catatan tindak lanjut
@@ -34,7 +35,7 @@ export type AssetRow = Asset & { claim_id: number | null; claim_due_date: string
 export type Claim = {
   id: number;
   asset_id: number;
-  due_date: string | null;
+  claimed: boolean;              // sudah di-claim ke customer
   trans_ref: string | null;      // W  Trans (nomor JV)
   expense_coa: string | null;    // X  COA expense
   sales_tooling: number;         // Z  Sales Tooling Amount
@@ -50,16 +51,16 @@ export type ClaimInput = Omit<Claim, "id" | "asset_id">;
 
 export type ClaimRow = Claim & {
   gl_account: string | null; vendor: string | null; project: string | null; po_no: string | null;
-  item_name: string | null; claim_to: string | null; amount: number;
+  item_name: string | null; claim_to: string | null; amount: number; due_date: string | null;
 };
 
 export const ASSET_TEXT_FIELDS = [
   "gl_account","trans_no","vendor","project","ringgisho_no","po_no","div_plant","tgl","product_code",
-  "part_number","item_name","claim_to",
+  "part_number","item_name","claim_to","due_date",
 ] as const;
 export const ASSET_NUM_FIELDS = ["qty","ringgisho_lc","kesaisho_sales","amount"] as const;
 
 export const CLAIM_TEXT_FIELDS = [
-  "due_date","trans_ref","expense_coa","fa_date","remark","mvd_status","mvd_note","note",
+  "trans_ref","expense_coa","fa_date","remark","mvd_status","mvd_note","note",
 ] as const;
 export const CLAIM_NUM_FIELDS = ["sales_tooling","expense_amount","fa_amount"] as const;

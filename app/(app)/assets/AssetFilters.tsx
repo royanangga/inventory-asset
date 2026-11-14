@@ -34,11 +34,11 @@ export default function AssetFilters({ accounts, projects, plants, total, amount
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => apply("q", v.trim()), 400);
   }
-  const hasFilter = ["q", "gl", "project", "plant", "check"].some((k) => sp.get(k));
+  const hasFilter = ["q", "gl", "project", "plant", "check", "due"].some((k) => sp.get(k));
 
   return (
     <div className="card p-4 space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_auto]">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1.2fr_auto]">
         <label><span className="label">Cari</span>
           <input value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Vendor, PO, part number, nama barang…" className="input mt-1" /></label>
         <label><span className="label">Akun GL</span>
@@ -56,6 +56,14 @@ export default function AssetFilters({ accounts, projects, plants, total, amount
           <select value={sp.get("plant") ?? ""} onChange={(e) => apply("plant", e.target.value)} className="input mt-1">
             <option value="">Semua</option>
             {plants.map((p) => <option key={p}>{p}</option>)}
+          </select></label>
+        <label><span className="label">Jatuh tempo</span>
+          <select value={sp.get("due") ?? ""} onChange={(e) => apply("due", e.target.value)} className="input mt-1">
+            <option value="">Semua</option>
+            <option value="due">Saatnya di-claim (jatuh tempo)</option>
+            <option value="soon">Dalam 7 hari</option>
+            <option value="nodue">Belum ada tanggal</option>
+            <option value="claimed">Sudah diclaim</option>
           </select></label>
         <div className="flex items-end">
           <button type="button" className="btn" disabled={!hasFilter} onClick={() => { applied.current = ""; setQ(""); start(() => router.replace(path)); }}>Reset</button>

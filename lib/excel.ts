@@ -93,7 +93,7 @@ export async function parseWorkbook(input: ArrayBuffer | Buffer | string): Promi
 
     // Claim ke customer: kolom W-AD + Remark (T) / MVD (U-V) / catatan (AF). Hanya dibuat bila ada isinya.
     const claimData: ClaimInput = {
-      due_date: null,
+      claimed: false,
       trans_ref: str(c("W")),
       expense_coa: str(c("X")),
       sales_tooling: num(c("Z")),
@@ -105,7 +105,9 @@ export async function parseWorkbook(input: ArrayBuffer | Buffer | string): Promi
       mvd_note: str(c("V")),
       note: str(c("AF")),
     };
-    const hasClaim = Object.values(claimData).some((v) => (typeof v === "number" ? v !== 0 : !!v));
+    // data W-AD terisi = aset sudah di-claim; bila hanya Remark/MVD/catatan = baru catatan
+    claimData.claimed = !!(claimData.trans_ref || claimData.expense_coa || claimData.sales_tooling || claimData.expense_amount || claimData.fa_amount || claimData.fa_date);
+    const hasClaim = claimData.claimed || Object.entries(claimData).some(([k, v]) => k !== "claimed" && (typeof v === "number" ? v !== 0 : !!v));
     const claim = hasClaim ? claimData : null;
 
     assets.push({
@@ -125,6 +127,7 @@ export async function parseWorkbook(input: ArrayBuffer | Buffer | string): Promi
       kesaisho_sales: num(c("Q")),
       amount: num(c("R")),
       claim_to: str(c("S")) === "0" ? null : str(c("S")),
+      due_date: null, // tidak ada di sheet; diisi lewat website
       claim,
       source_row: r,
     });

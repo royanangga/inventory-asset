@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Modal from "./Modal";
-import { fmt } from "../lib/format";
+import { fmt, fmtDate } from "../lib/format";
 import type { Claim } from "../lib/types";
 
 export type ClaimTarget = {
@@ -9,11 +9,12 @@ export type ClaimTarget = {
   title: string; // ringkasan aset (vendor · nama barang)
   amount: number;
   claimTo: string | null;
+  dueDate?: string | null;
   claim: Claim | null;
 };
 
 type Form = Record<string, string>;
-const FIELDS = ["due_date", "trans_ref", "expense_coa", "sales_tooling", "expense_amount", "fa_amount", "fa_date", "remark", "mvd_status", "mvd_note", "note"] as const;
+const FIELDS = ["trans_ref", "expense_coa", "sales_tooling", "expense_amount", "fa_amount", "fa_date", "remark", "mvd_status", "mvd_note", "note"] as const;
 
 function toForm(c: Claim | null): Form {
   const f: Form = {};
@@ -27,6 +28,7 @@ function toForm(c: Claim | null): Form {
 /** Form claim ke customer (kolom W-AD + Remark/MVD + jatuh tempo). Satu aset = satu claim. */
 export default function ClaimModal({ target, onClose, onSaved }: { target: ClaimTarget; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<Form>(toForm(target.claim));
+  const [claimed, setClaimed] = useState(target.claim ? target.claim.claimed : true);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
@@ -39,7 +41,7 @@ export default function ClaimModal({ target, onClose, onSaved }: { target: Claim
     e.preventDefault(); setBusy(true); setErr("");
     const res = await fetch(target.claim ? `/api/claims/${target.claim.id}` : "/api/claims", {
       method: target.claim ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...f, asset_id: target.assetId }),
+      body: JSON.stringify({ ...f, claimed, asset_id: target.assetId }),
     });
     if (res.ok) return onSaved();
     setErr((await res.json().catch(() => ({}))).error ?? "Gagal menyimpan"); setBusy(false);
@@ -57,10 +59,10 @@ export default function ClaimModal({ target, onClose, onSaved }: { target: Claim
       <form onSubmit={save} className="space-y-4">
         <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm">
           <div className="font-medium">{target.title}</div>
-          <div className="text-slate-500">Inventory Asset Rp {fmt(target.amount)}{target.claimTo ? ` · ${target.claimTo}` : ""}</div>
+          <div className="text-slate-500">Inventory Asset Rp {fmt(target.amount)}{target.claimTo ? ` · ${target.claimTo}` : ""} · Jatuh tempo {target.dueDate ? fmtDate(target.dueDate) : "belum diisi"}</div>
         </div>
         <div className="grid sm:grid-cols-3 gap-3">
-          {T("due_date", target.claim ? "Tanggal jatuh tempo" : "Tanggal jatuh tempo *", "date")}
+          <label className="sm:col-span-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={claimed} onChange={(e) => setClaimed(e.target.checked)} /> <span><b>Sudah di-claim ke customer</b> <span className="text-slate-500">(hilangkan centang bila baru catatan)</span></span></label>
           {T("trans_ref", "Trans (JV)")}
           {T("expense_coa", "COA Expense")}
           {T("sales_tooling", "Sales Tooling Amount", "number")}

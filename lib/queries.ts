@@ -1,11 +1,15 @@
 import { sql } from "./db";
+import { DUE_SOON_DAYS } from "./format";
 import type { Asset, AssetRow, ClaimRow, GlAccount } from "./types";
 
-export type AssetFilters = { q?: string; gl?: string; project?: string; plant?: string; check?: string };
+export type AssetFilters = { q?: string; gl?: string; project?: string; plant?: string; check?: string; due?: string };
 
-/** Aset dianggap "diclaim" bila sudah ada tanggal jatuh tempo atau data claim (kolom W-AD). Remark/MVD saja = hanya catatan. */
-const CLAIMED = () => sql`(c.due_date is not null or c.trans_ref is not null or c.expense_amount <> 0 or c.fa_amount <> 0
-  or c.sales_tooling <> 0 or c.fa_date is not null)`;
+/** Hari ini menurut waktu Jakarta (agar alert jatuh tempo tidak bergeser karena zona waktu server). */
+const TODAY = () => sql`(now() at time zone 'Asia/Jakarta')::date`;
+/** Aset sudah di-claim bila record claim bertanda claimed (atau ada data W-AD dari Excel). */
+const CLAIMED = () => sql`c.claimed`;
+/** Tanpa join (dipakai di where() atas tabel assets). */
+const IS_CLAIMED = () => sql`id in (select asset_id from asset_claims where claimed)`;
 
 const CHECKS: Record<string, { label: string; where: () => any }> = {
   dup: {
@@ -32,6 +36,10 @@ function where(f: AssetFilters) {
   if (f.gl) parts.push(f.gl === "none" ? sql`gl_account is null` : sql`gl_account = ${f.gl}`);
   if (f.project) parts.push(sql`project = ${f.project}`);
   if (f.plant) parts.push(sql`div_plant = ${f.plant}`);
+  if (f.due === "due") parts.push(sql`due_date <= ${TODAY()} and not ${IS_CLAIMED()}`);
+  if (f.due === "soon") parts.push(sql`due_date > ${TODAY()} and due_date <= ${TODAY()} + ${DUE_SOON_DAYS}::int and not ${IS_CLAIMED()}`);
+  if (f.due === "nodue") parts.push(sql`due_date is null and not ${IS_CLAIMED()}`);
+  if (f.due === "claimed") parts.push(IS_CLAIMED());
   if (f.check && CHECKS[f.check]) parts.push(CHECKS[f.check].where());
   if (!parts.length) return sql`true`;
   return parts.reduce((a, b) => sql`${a} and ${b}`);
@@ -40,7 +48,7 @@ function where(f: AssetFilters) {
 export async function listAssets(f: AssetFilters, page = 1, pageSize = 50) {
   const w = where(f);
   const [{ total, amount, qty }] = await sql`select count(*)::int as total, coalesce(sum(amount),0) as amount, coalesce(sum(qty),0) as qty from assets where ${w}`;
-  const rows = await sql<AssetRow[]>`select a.*, c.id as claim_id, c.due_date as claim_due_date, coalesce(${CLAIMED()}, false) as claimed
+  const rows = await sql<AssetRow[]>`select a.*, c.id as claim_id, coalesce(${CLAIMED()}, false) as claimed
     from (select * from assets where ${w} order by source_row nulls last, id limit ${pageSize} offset ${(page - 1) * pageSize}) a
     left join asset_claims c on c.asset_id = a.id
     order by a.source_row nulls last, a.id`;
@@ -100,22 +108,37 @@ function claimWhere(f: ClaimFilters) {
   // default (kosong) = hanya yang sudah diclaim; "all" = termasuk aset yang baru punya catatan Remark/MVD
   if (f.status === "notes") parts.push(sql`not ${CLAIMED()}`);
   else if (f.status !== "all") parts.push(CLAIMED());
-  if (f.status === "overdue") parts.push(sql`c.due_date < current_date`);
-  if (f.status === "nodue") parts.push(sql`c.due_date is null`);
-  if (f.status === "upcoming") parts.push(sql`c.due_date >= current_date`);
+  if (f.status === "overdue") parts.push(sql`a.due_date < ${TODAY()}`);
+  if (f.status === "nodue") parts.push(sql`a.due_date is null`);
+  if (f.status === "upcoming") parts.push(sql`a.due_date >= ${TODAY()}`);
   if (!parts.length) return sql`true`;
   return parts.reduce((a, b) => sql`${a} and ${b}`);
 }
 
 export async function listClaims(f: ClaimFilters) {
   const w = claimWhere(f);
-  const rows = await sql<ClaimRow[]>`select c.*, a.gl_account, a.vendor, a.project, a.po_no, a.item_name, a.claim_to, a.amount
+  const rows = await sql<ClaimRow[]>`select c.*, a.due_date, a.gl_account, a.vendor, a.project, a.po_no, a.item_name, a.claim_to, a.amount
     from asset_claims c join assets a on a.id = c.asset_id where ${w}
-    order by c.due_date nulls last, a.source_row nulls last, c.id`;
+    order by a.due_date nulls last, a.source_row nulls last, c.id`;
   return rows;
 }
 
 export async function claimCustomers() {
   const r = await sql`select distinct a.claim_to from asset_claims c join assets a on a.id = c.asset_id where a.claim_to is not null order by 1`;
   return r.map((x) => x.claim_to as string);
+}
+
+export type DueAlerts = { due: number; dueAmount: number; overdue: number; today: number; soon: number; soonAmount: number };
+
+/** Aset yang belum di-claim dan sudah/akan jatuh tempo — untuk alert di seluruh halaman. */
+export async function dueAlerts(): Promise<DueAlerts> {
+  const [r] = await sql`select
+      count(*) filter (where due_date <= ${TODAY()})::int as due,
+      coalesce(sum(amount) filter (where due_date <= ${TODAY()}), 0) as due_amount,
+      count(*) filter (where due_date < ${TODAY()})::int as overdue,
+      count(*) filter (where due_date = ${TODAY()})::int as today,
+      count(*) filter (where due_date > ${TODAY()} and due_date <= ${TODAY()} + ${DUE_SOON_DAYS}::int)::int as soon,
+      coalesce(sum(amount) filter (where due_date > ${TODAY()} and due_date <= ${TODAY()} + ${DUE_SOON_DAYS}::int), 0) as soon_amount
+    from assets where due_date is not null and id not in (select asset_id from asset_claims where claimed)`;
+  return { due: r.due, dueAmount: Number(r.due_amount), overdue: r.overdue, today: r.today, soon: r.soon, soonAmount: Number(r.soon_amount) };
 }

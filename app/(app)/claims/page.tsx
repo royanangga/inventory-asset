@@ -19,7 +19,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: SP })
       <header>
         <h1 className="text-2xl font-semibold">Claim Customer</h1>
         <p className="text-sm text-slate-500">
-          Aset inventory yang sudah di-claim ke customer (ada tanggal jatuh tempo atau data kolom W-AD). {fmt(rows.length)} claim · Inventory Asset {fmtIdr(sum("amount"))} · Expense {fmtIdr(sum("expense_amount"))} · FA {fmtIdr(sum("fa_amount"))}
+          Aset inventory yang sudah di-claim ke customer (bertanda sudah diclaim atau data kolom W-AD terisi). {fmt(rows.length)} claim · Inventory Asset {fmtIdr(sum("amount"))} · Expense {fmtIdr(sum("expense_amount"))} · FA {fmtIdr(sum("fa_amount"))}
         </p>
       </header>
 

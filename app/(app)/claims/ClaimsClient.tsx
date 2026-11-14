@@ -2,16 +2,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ClaimModal, { type ClaimTarget } from "../../../components/ClaimModal";
-import { fmt, fmtDate } from "../../../lib/format";
+import { fmt, fmtDate, todayJakarta } from "../../../lib/format";
 import type { ClaimRow } from "../../../lib/types";
 
 export default function ClaimsClient({ rows, exportQs }: { rows: ClaimRow[]; exportQs: string }) {
   const router = useRouter();
   const [target, setTarget] = useState<ClaimTarget | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayJakarta();
 
   const open = (r: ClaimRow) =>
-    setTarget({ assetId: r.asset_id, title: [r.vendor, r.item_name].filter(Boolean).join(" · "), amount: r.amount, claimTo: r.claim_to, claim: r });
+    setTarget({ assetId: r.asset_id, title: [r.vendor, r.item_name].filter(Boolean).join(" · "), amount: r.amount, claimTo: r.claim_to, dueDate: r.due_date, claim: r });
 
   return (
     <>
