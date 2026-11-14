@@ -18,7 +18,7 @@ function toForm(a: AssetRow): Form {
   return f;
 }
 
-export default function AssetsClient({ rows, accounts, exportQs }: { rows: AssetRow[]; accounts: GlAccount[]; exportQs: string }) {
+export default function AssetsClient({ rows, accounts, exportQs, totals }: { rows: AssetRow[]; accounts: GlAccount[]; exportQs: string; totals: { count: number; qty: number; amount: number } }) {
   const router = useRouter();
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [edit, setEdit] = useState<{ id: number | null; form: Form } | null>(null);
@@ -29,6 +29,7 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
   const [msg, setMsg] = useState("");
   const accName = useMemo(() => Object.fromEntries(accounts.map((a) => [a.code, a.name])), [accounts]);
 
+  const selRows = rows.filter((r) => sel.has(r.id));
   const allSelected = rows.length > 0 && rows.every((r) => sel.has(r.id));
   const toggleAll = () => setSel(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
   const toggle = (id: number) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -62,7 +63,7 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
 
       {sel.size > 0 && (
         <div className="card flex flex-wrap items-center gap-3 px-4 py-3 border-brand-100 bg-brand-50/60">
-          <span className="text-sm font-medium">{sel.size} dipilih</span>
+          <span className="text-sm font-medium">{sel.size} dipilih · Rp {fmt(rows.filter((r) => sel.has(r.id)).reduce((t, r) => t + r.amount, 0))}</span>
           <select value={bulkGl} onChange={(e) => setBulkGl(e.target.value)} className="input !w-auto" aria-label="Akun GL tujuan">
             <option value="">Pindahkan ke akun GL…</option>
             {accounts.map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
@@ -109,6 +110,30 @@ export default function AssetsClient({ rows, accounts, exportQs }: { rows: Asset
               </tr>
             ))}
           </tbody>
+          {rows.length > 0 && (
+            <tfoot className="bg-slate-50 font-semibold border-t-2 border-slate-200">
+              {sel.size > 0 && (
+                <tr className="text-brand-600">
+                  <td className="td" colSpan={6}>Dipilih ({fmt(sel.size)} baris)</td>
+                  <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.qty), 0))}</td>
+                  <td className="td num">{fmt(selRows.reduce((t, r) => t + Number(r.amount), 0))}</td>
+                  <td className="td" colSpan={2} />
+                </tr>
+              )}
+              <tr>
+                <td className="td" colSpan={6}>Subtotal halaman ini ({fmt(rows.length)} baris)</td>
+                <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.qty), 0))}</td>
+                <td className="td num">{fmt(rows.reduce((t, r) => t + Number(r.amount), 0))}</td>
+                <td className="td" colSpan={2} />
+              </tr>
+              <tr>
+                <td className="td" colSpan={6}>Total semua hasil filter ({fmt(totals.count)} item)</td>
+                <td className="td num">{fmt(totals.qty)}</td>
+                <td className="td num">{fmt(totals.amount)}</td>
+                <td className="td" colSpan={2} />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

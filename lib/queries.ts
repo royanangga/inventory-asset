@@ -39,12 +39,12 @@ function where(f: AssetFilters) {
 
 export async function listAssets(f: AssetFilters, page = 1, pageSize = 50) {
   const w = where(f);
-  const [{ total, amount }] = await sql`select count(*)::int as total, coalesce(sum(amount),0) as amount from assets where ${w}`;
+  const [{ total, amount, qty }] = await sql`select count(*)::int as total, coalesce(sum(amount),0) as amount, coalesce(sum(qty),0) as qty from assets where ${w}`;
   const rows = await sql<AssetRow[]>`select a.*, c.id as claim_id, c.due_date as claim_due_date, coalesce(${CLAIMED()}, false) as claimed
     from (select * from assets where ${w} order by source_row nulls last, id limit ${pageSize} offset ${(page - 1) * pageSize}) a
     left join asset_claims c on c.asset_id = a.id
     order by a.source_row nulls last, a.id`;
-  return { rows, total: total as number, amount: amount as number };
+  return { rows, total: total as number, amount: amount as number, qty: qty as number };
 }
 
 export async function allAssets(f: AssetFilters) {
